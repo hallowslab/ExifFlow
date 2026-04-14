@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "app-gui/src-tauri",
+    "rftps",
+    "timekeeper-rs",
+]
+resolver = "2"
