@@ -3663,12 +3663,13 @@ dependencies = [
 
 [[package]]
 name = "rftps"
-version = "0.3.8"
+version = "0.4.0"
 dependencies = [
  "async-trait",
  "clap",
  "libunftp",
  "rand 0.9.4",
+ "serde",
  "tempfile",
  "tokio",
  "unftp-sbe-fs",
@@ -3744,6 +3745,7 @@ dependencies = [
  "aws-lc-rs",
  "log",
  "once_cell",
+ "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
