@@ -40,6 +40,7 @@ pipeline {
                 sh '''
                 set -e
 
+                . "$HOME/.cargo/env"
                 rustup target add x86_64-pc-windows-gnu
 
                 cargo --version
@@ -157,7 +158,7 @@ pipeline {
         }
 
     }
-    
+
     post {
         success {
             archiveArtifacts artifacts: 'dist/final/**,dist/ExifFlow-windows.zip', fingerprint: true
