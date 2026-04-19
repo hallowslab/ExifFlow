@@ -114,9 +114,9 @@ pipeline {
                 sh '''
                 set -e
 
+                mkdir -p timekeeper-rs/bin/windows/exiftool
 
-                mkdir -p app-gui/src-tauri/bin/windows/exiftool
-                cp -r "$EXIFTOOL_DIR/"* app-gui/src-tauri/bin/windows/exiftool/
+                cp -r "$EXIFTOOL_DIR/"* timekeeper-rs/bin/windows/exiftool/
                 '''
             }
         }
