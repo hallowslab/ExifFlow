@@ -42,6 +42,7 @@ pipeline {
 
                 . "$HOME/.cargo/env"
                 rustup target add x86_64-pc-windows-gnu
+                cargo install --locked cargo-xwin
 
                 cargo --version
                 gcc --version
@@ -133,7 +134,7 @@ pipeline {
 
                     cd ..
 
-                    cargo tauri build --target x86_64-pc-windows-gnu || true
+                    cargo tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc
                     '''
                 }
             }
