@@ -15,18 +15,22 @@ You can build all members of the workspace (including dependencies) using:
 cargo build --release
 ```
 
+**Note**: Make sure to clone the components as into the worspace directory as specified in the [Component Documentation](#component-documentation) section.
+
 ## Component Documentation
 
 The workspace is divided into several projects, each with its own specialized build options:
 
 ### 1. Media Organizer (Timekeeper)
 Handles EXIF-based file sorting and organization.
+- [**Github Repo**](https://github.com/hallowslab/timekeeper-rs)
 - **Path:** `./timekeeper-rs`
 - **Key Feature:** `bundled` (embeds ExifTool)
 - [Full Build Details](../timekeeper-rs/docs/build.md)
 
 ### 2. FTP Server (RFTPS)
 Provides the backend for remote transfers.
+- [**Github Repo**](https://github.com/hallowslab/rftps)
 - **Path:** `./rftps`
 - **Key Feature:** `include_pem_files` (embeds SSL/TLS certificates)
 - [Full Build Details](../rftps/docs/build.md)
