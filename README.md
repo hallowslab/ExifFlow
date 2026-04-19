@@ -162,10 +162,10 @@ npm run tauri dev
 ## Badges
 
 
-```md
+
 ![Downloads](https://img.shields.io/github/downloads/hallowslab/ExifFlow/total)
 ![License](https://img.shields.io/github/license/hallowslab/ExifFlow)
-```
+
 
 ---
 
