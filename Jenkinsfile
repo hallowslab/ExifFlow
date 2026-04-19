@@ -72,18 +72,22 @@ pipeline {
 
         stage('Build Linux (Tauri Bundle)') {
             steps {
-                sh '''
-                set -e
+                nodejs('Node-24') {
+                    sh '''
+                    set -e
 
-                cd app-gui
+                    . "$HOME/.cargo/env"
 
-                npm install
-                npm run build
+                    cd app-gui
 
-                cd ..
+                    npm ci
+                    npm run build
 
-                cargo tauri build
-                '''
+                    cd ..
+
+                    cargo tauri build
+                    '''
+                }
             }
         }
 
@@ -118,18 +122,20 @@ pipeline {
 
         stage('Build Windows (Tauri / Fallback)') {
             steps {
-                sh '''
-                set -e
+                nodejs('Node-24') {
+                    sh '''
+                    set -e
 
-                cd app-gui
+                    cd app-gui
 
-                npm install
-                npm run build
+                    npm install
+                    npm run build
 
-                cd ..
+                    cd ..
 
-                cargo tauri build --target x86_64-pc-windows-gnu || true
-                '''
+                    cargo tauri build --target x86_64-pc-windows-gnu || true
+                    '''
+                }
             }
         }
 
