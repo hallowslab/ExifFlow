@@ -6,12 +6,13 @@ pipeline {
 
         LINUX_TARGET = "x86_64-unknown-linux-gnu"
         WINDOWS_TARGET = "x86_64-pc-windows-msvc"
+        MAC_TARGET = "aarch64-apple-darwin"
 
-        LINUX_TARGET_DIR = "target/linux"
-        WINDOWS_TARGET_DIR = "target/windows"
+        LINUX_DIR = "target/linux"
+        WINDOWS_DIR = "target/windows"
+        MAC_DIR = "target/mac"
 
         CERT_DIR = "certs"
-
         EXIFTOOL_DIR = "/opt/code-deps/exiftool"
 
         DEP1_REPO = "https://github.com/hallowslab/rftps.git"
@@ -31,7 +32,7 @@ pipeline {
                 sh '''
                 set -e
 
-                rm -rf rftps timekeeper-rs dist target/linux target/windows
+                rm -rf dist target rftps timekeeper-rs
 
                 git clone "$DEP1_REPO" rftps
                 git clone "$DEP2_REPO" timekeeper-rs
@@ -84,7 +85,7 @@ pipeline {
                     set -e
                     . "$HOME/.cargo/env"
 
-                    export CARGO_TARGET_DIR="$LINUX_TARGET_DIR"
+                    export CARGO_TARGET_DIR="$LINUX_DIR"
 
                     cd app-gui
                     npm ci
@@ -104,7 +105,14 @@ pipeline {
 
                 mkdir -p dist/linux dist/final
 
-                cp -r target/linux/release/bundle/* dist/linux/
+                BUNDLE_DIR=$(find app-gui/src-tauri/target/linux -type d -path "*/release/bundle" | head -n 1)
+
+                if [ -z "$BUNDLE_DIR" ]; then
+                    echo "Linux bundle not found"
+                    exit 1
+                fi
+
+                cp -r "$BUNDLE_DIR"/* dist/linux/
 
                 tar -czf dist/final/ExifFlow-linux.tar.gz -C dist/linux .
                 '''
@@ -132,7 +140,7 @@ pipeline {
                     set -e
                     . "$HOME/.cargo/env"
 
-                    export CARGO_TARGET_DIR="$WINDOWS_TARGET_DIR"
+                    export CARGO_TARGET_DIR="$WINDOWS_DIR"
 
                     cd app-gui
                     npm ci
@@ -152,7 +160,14 @@ pipeline {
 
                 mkdir -p dist/windows dist/final
 
-                cp -r target/windows/x86_64-pc-windows-msvc/release/bundle/* dist/windows/
+                BUNDLE_DIR=$(find app-gui/src-tauri/target/windows -type d -path "*/release/bundle" | head -n 1)
+
+                if [ -z "$BUNDLE_DIR" ]; then
+                    echo "Windows bundle not found"
+                    exit 1
+                fi
+
+                cp -r "$BUNDLE_DIR"/* dist/windows/
 
                 cd dist/windows
                 zip -r ../final/ExifFlow-windows.zip .
