@@ -267,3 +267,75 @@ input:focus {
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
+.settings-group {
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  margin-bottom: 16px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+/* subtle hover glow like your nav items */
+.settings-group:hover {
+  border-color: rgba(0, 242, 255, 0.25);
+  box-shadow: 0 0 0 1px rgba(0, 242, 255, 0.05);
+}
+
+.settings-group-header {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+
+  font-size: 0.95rem;
+  letter-spacing: 0.3px;
+  transition: all 0.2s ease;
+}
+
+.settings-group-header:hover {
+  color: var(--accent-cyan);
+}
+
+/* little cyber chevron */
+.chevron {
+  color: var(--text-secondary);
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.settings-group:hover .chevron {
+  color: var(--accent-cyan);
+}
+
+.settings-group.open .chevron {
+  color: var(--accent-purple);
+}
+
+/* smooth collapse */
+.settings-group-body {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: all 0.25s ease;
+  padding: 0 16px;
+}
+
+.settings-group.open .settings-group-body {
+  max-height: 1000px;
+  /* safe large value */
+  opacity: 1;
+  transform: translateY(0);
+  padding: 16px;
+}
+
+/* optional: tighten spacing inside groups */
+.settings-group-body .form-group:last-child {
+  margin-bottom: 0;
+}

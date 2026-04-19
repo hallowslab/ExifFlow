@@ -13,23 +13,50 @@ import {
   Copy,
   Trash2
 } from 'lucide-react';
+import SettingsGroup from './components/Accordion';
 import './App.css';
+
+const SETTINGS_STORAGE_KEY = 'exifflow.settings.v1';
+
+const DEFAULT_APP_SETTINGS = {
+  ftp: {
+    uploadPath: 'C:/ExifFlow/Uploads',
+    user: 'user'
+  },
+  organize: {
+    source: 'C:/ExifFlow/Uploads',
+    destination: 'C:/ExifFlow/Organized',
+    method: 'copy'
+  },
+  backup: {
+    source: 'C:/ExifFlow/Organized',
+    destination: 'D:/Backups/ExifFlow'
+  },
+  tool: {
+    exiftoolPath: ''
+  },
+  system: {
+    logLimit: 50,
+    powerUserMode: false
+  }
+};
 
 function App() {
   const [activeTab, setActiveTab] = useState('ftp');
   const [ftpStatus, setFtpStatus] = useState('offline');
   const [isOrganizing, setIsOrganizing] = useState(false);
   const [logs, setLogs] = useState([]);
-  const [logLimit, setLogLimit] = useState(20);
-  const [isPowerUser, setIsPowerUser] = useState(false);
+  const [logLimit, setLogLimit] = useState(DEFAULT_APP_SETTINGS.system.logLimit);
+  const [isPowerUser, setIsPowerUser] = useState(DEFAULT_APP_SETTINGS.system.powerUserMode);
+  const [appSettings, setAppSettings] = useState(DEFAULT_APP_SETTINGS);
   const [progress, setProgress] = useState({ total: 0, processed: 0, errors: 0 });
 
   // FTP Config
   const [ftpConfig, setFtpConfig] = useState({
     address: '0.0.0.0',
     port: 21212,
-    directory: 'C:/ExifFlow/Uploads',
-    username: 'user',
+    directory: DEFAULT_APP_SETTINGS.ftp.uploadPath,
+    username: DEFAULT_APP_SETTINGS.ftp.user,
     password: '',
     enable_ftps: true
   });
@@ -37,20 +64,59 @@ function App() {
 
   // Organize Config
   const [orgConfig, setOrgConfig] = useState({
-    source: 'C:/ExifFlow/Uploads',
-    destination: 'C:/ExifFlow/Organized',
+    source: DEFAULT_APP_SETTINGS.organize.source,
+    destination: DEFAULT_APP_SETTINGS.organize.destination,
     dryRun: false,
-    useCopy: true // Safe by default
+    useCopy: DEFAULT_APP_SETTINGS.organize.method === 'copy' // Safe by default
   });
 
   // Backup Config
   const [backupConfig, setBackupConfig] = useState({
-    source: 'C:/ExifFlow/Organized',
-    destination: 'D:/Backups/ExifFlow',
+    source: DEFAULT_APP_SETTINGS.backup.source,
+    destination: DEFAULT_APP_SETTINGS.backup.destination,
     dedupe: 'size_time'
   });
 
+  const applySettingsToConfigs = (settings) => {
+    setFtpConfig((prev) => ({
+      ...prev,
+      directory: settings.ftp.uploadPath,
+      username: settings.ftp.user
+    }));
+    setOrgConfig((prev) => ({
+      ...prev,
+      source: settings.organize.source,
+      destination: settings.organize.destination,
+      useCopy: settings.organize.method === 'copy'
+    }));
+    setBackupConfig((prev) => ({
+      ...prev,
+      source: settings.backup.source,
+      destination: settings.backup.destination
+    }));
+    setLogLimit(settings.system.logLimit);
+    setIsPowerUser(settings.system.powerUserMode);
+  };
+
   useEffect(() => {
+    try {
+      const storedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      if (storedSettings) {
+        const parsed = JSON.parse(storedSettings);
+        const mergedSettings = {
+          ftp: { ...DEFAULT_APP_SETTINGS.ftp, ...(parsed.ftp || {}) },
+          organize: { ...DEFAULT_APP_SETTINGS.organize, ...(parsed.organize || {}) },
+          backup: { ...DEFAULT_APP_SETTINGS.backup, ...(parsed.backup || {}) },
+          tool: { ...DEFAULT_APP_SETTINGS.tool, ...(parsed.tool || {}) },
+          system: { ...DEFAULT_APP_SETTINGS.system, ...(parsed.system || {}) }
+        };
+        setAppSettings(mergedSettings);
+        applySettingsToConfigs(mergedSettings);
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
+
     // Listen for progress updates from backend
     const unlistenOrg = listen('org-progress', (event) => {
       setProgress(event.payload);
@@ -72,6 +138,26 @@ function App() {
       unlistenFtp.then((fn) => fn());
     };
   }, []);
+
+  const updateAppSettings = (section, field, value) => {
+    setAppSettings((prev) => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleSaveSettings = () => {
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(appSettings));
+      applySettingsToConfigs(appSettings);
+      addLog('Settings saved and applied');
+    } catch (error) {
+      addLog(`Failed to save settings: ${error}`);
+    }
+  };
 
   const addLog = (msg) => {
     setLogs((prev) => [`[${new Date().toLocaleTimeString()}] ${msg}`, ...prev].slice(0, logLimit));
@@ -322,47 +408,127 @@ function App() {
         return (
           <div className="panel">
             <h2>General Settings</h2>
-            <div className="form-group">
-              <label>ExifTool Path (Optional)</label>
-              <input placeholder="Default: system path" />
-            </div>
-            <div className="form-group">
-              <label>Theme</label>
-              <div className="status-badge status-online">High-Tech Dark (Active)</div>
-            </div>
-            <div className="form-group">
-              <label>Default Organization Method</label>
-              <select
-                value={orgConfig.useCopy ? 'copy' : 'move'}
-                onChange={e => setOrgConfig({ ...orgConfig, useCopy: e.target.value === 'copy' })}
-              >
-                <option value="copy">Copy (Safe/Default)</option>
-                <option value="move">Move (Destructive)</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Activity Log Limit (Lines)</label>
-              <input
-                type="number"
-                value={logLimit}
-                onChange={e => setLogLimit(Math.min(500, Math.max(1, parseInt(e.target.value) || 1)))}
-              />
-            </div>
-            <div className="form-group" style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '20px', marginTop: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <label style={{ marginBottom: '4px' }}>Power User Mode</label>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Shows all settings for FTP, Organizer, and Backup.</p>
-                </div>
+
+            <SettingsGroup title="FTP Settings">
+              <div className="form-group">
+                <label>Default Upload Path</label>
                 <input
-                  type="checkbox"
-                  style={{ width: 'auto' }}
-                  checked={isPowerUser}
-                  onChange={e => setIsPowerUser(e.target.checked)}
+                  value={appSettings.ftp.uploadPath}
+                  onChange={(e) => updateAppSettings('ftp', 'uploadPath', e.target.value)}
+                  placeholder="Default: C:/ExifFlow/Uploads"
                 />
               </div>
-            </div>
-            <button className="btn btn-primary" style={{ marginTop: '24px' }}>SAVE SETTINGS</button>
+
+              <div className="form-group">
+                <label>Default User</label>
+                <input
+                  value={appSettings.ftp.user}
+                  onChange={(e) => updateAppSettings('ftp', 'user', e.target.value)}
+                  placeholder="user"
+                />
+              </div>
+            </SettingsGroup>
+
+            <SettingsGroup title="Organizer Settings">
+              <div className="form-group">
+                <label>Default Organized Source</label>
+                <input
+                  value={appSettings.organize.source}
+                  onChange={(e) => updateAppSettings('organize', 'source', e.target.value)}
+                  placeholder="Default: C:/ExifFlow/Uploads"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Default Organized Destination</label>
+                <input
+                  value={appSettings.organize.destination}
+                  onChange={(e) => updateAppSettings('organize', 'destination', e.target.value)}
+                  placeholder="Default: C:/ExifFlow/Organized"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Default Organization Method</label>
+                <select
+                  value={appSettings.organize.method}
+                  onChange={(e) =>
+                    updateAppSettings('organize', 'method', e.target.value)
+                  }
+                >
+                  <option value="copy">Copy (Safe/Default)</option>
+                  <option value="move">Move (Destructive)</option>
+                </select>
+              </div>
+            </SettingsGroup>
+
+            <SettingsGroup title="Backup Settings">
+              <div className="form-group">
+                <label>Default Backup Source</label>
+                <input
+                  value={appSettings.backup.source}
+                  onChange={(e) => updateAppSettings('backup', 'source', e.target.value)}
+                  placeholder="Default: C:/ExifFlow/Organized"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Default Backup Destination</label>
+                <input
+                  value={appSettings.backup.destination}
+                  onChange={(e) => updateAppSettings('backup', 'destination', e.target.value)}
+                  placeholder="Default: C:/ExifFlow/Backup"
+                />
+              </div>
+            </SettingsGroup>
+
+            <SettingsGroup title="Tool Settings">
+              <div className="form-group">
+                <label>ExifTool Path (Optional)</label>
+                <input
+                  value={appSettings.tool.exiftoolPath}
+                  onChange={(e) => updateAppSettings('tool', 'exiftoolPath', e.target.value)}
+                  placeholder="Default: system path"
+                />
+              </div>
+            </SettingsGroup>
+
+            <SettingsGroup title="System">
+              <div className="form-group">
+                <label>Theme</label>
+                <div className="status-badge status-online">
+                  High-Tech Dark (Active)
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Activity Log Limit (Lines)</label>
+                <input
+                  type="number"
+                  value={appSettings.system.logLimit}
+                  onChange={(e) =>
+                    updateAppSettings(
+                      'system',
+                      'logLimit',
+                      Math.min(500, Math.max(1, parseInt(e.target.value, 10) || 1))
+                    )
+                  }
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Power User Mode</label>
+                <input
+                  type="checkbox"
+                  checked={appSettings.system.powerUserMode}
+                  onChange={(e) => updateAppSettings('system', 'powerUserMode', e.target.checked)}
+                />
+              </div>
+            </SettingsGroup>
+
+            <button className="btn btn-primary" style={{ marginTop: "24px" }} onClick={handleSaveSettings}>
+              SAVE SETTINGS
+            </button>
           </div>
         );
       default:
