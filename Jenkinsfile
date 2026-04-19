@@ -156,10 +156,11 @@ pipeline {
             }
         }
 
-        post {
-            success {
-                archiveArtifacts artifacts: 'dist/final/**,dist/ExifFlow-windows.zip', fingerprint: true
-            }
+    }
+    
+    post {
+        success {
+            archiveArtifacts artifacts: 'dist/final/**,dist/ExifFlow-windows.zip', fingerprint: true
         }
     }
 }
