@@ -4,7 +4,11 @@ pipeline {
     environment {
         RUST_BACKTRACE = "1"
 
-        WIN_TARGET = "x86_64-pc-windows-gnu"
+        LINUX_TARGET = "x86_64-unknown-linux-gnu"
+        WINDOWS_TARGET = "x86_64-pc-windows-msvc"
+
+        LINUX_TARGET_DIR = "target/linux"
+        WINDOWS_TARGET_DIR = "target/windows"
 
         CERT_DIR = "certs"
 
@@ -22,15 +26,17 @@ pipeline {
             }
         }
 
-        stage('Clone Workspace Members') {
+        stage('Prepare Workspace') {
             steps {
                 sh '''
                 set -e
 
-                rm -rf rftps timekeeper-rs
+                rm -rf rftps timekeeper-rs dist target/linux target/windows
 
                 git clone "$DEP1_REPO" rftps
                 git clone "$DEP2_REPO" timekeeper-rs
+
+                mkdir -p certs
                 '''
             }
         }
@@ -71,22 +77,21 @@ pipeline {
 
         /* -------------------- LINUX BUILD -------------------- */
 
-        stage('Build Linux (Tauri Bundle)') {
+        stage('Build Linux') {
             steps {
                 nodejs('Node-24') {
                     sh '''
                     set -e
-
                     . "$HOME/.cargo/env"
 
-                    cd app-gui
+                    export CARGO_TARGET_DIR="$LINUX_TARGET_DIR"
 
+                    cd app-gui
                     npm ci
                     npm run build
-
                     cd ..
 
-                    cargo tauri build
+                    cargo tauri build --target $LINUX_TARGET
                     '''
                 }
             }
@@ -99,10 +104,9 @@ pipeline {
 
                 mkdir -p dist/linux dist/final
 
-                # Copy all Linux bundle outputs from workspace root target
-                cp -r target/release/bundle/* dist/linux/ || true
+                cp -r target/linux/release/bundle/* dist/linux/
 
-                tar -czf dist/final/ExifFlow-linux-bundle.tar.gz -C dist/linux .
+                tar -czf dist/final/ExifFlow-linux.tar.gz -C dist/linux .
                 '''
             }
         }
@@ -121,22 +125,21 @@ pipeline {
             }
         }
 
-        stage('Build Windows (Tauri / Fallback)') {
+        stage('Build Windows') {
             steps {
                 nodejs('Node-24') {
                     sh '''
                     set -e
-
                     . "$HOME/.cargo/env"
 
+                    export CARGO_TARGET_DIR="$WINDOWS_TARGET_DIR"
+
                     cd app-gui
-
-                    npm install
+                    npm ci
                     npm run build
-
                     cd ..
 
-                    cargo tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
+                    cargo tauri build --target $WINDOWS_TARGET --runner cargo-xwin
                     '''
                 }
             }
@@ -149,15 +152,7 @@ pipeline {
 
                 mkdir -p dist/windows dist/final
 
-                # Preferred: bundled output (if produced)
-                if [ -d "target/x86_64-pc-windows-gnu/release/bundle" ]; then
-                    cp -r target/x86_64-pc-windows-gnu/release/bundle/* dist/windows/
-                elif [ -d "target/release/bundle" ]; then
-                    # fallback if toolchain ignores target dir
-                    cp -r target/release/bundle/* dist/windows/
-                else
-                    echo "No Tauri bundle found, falling back to portable exe" || false
-                fi
+                cp -r target/windows/x86_64-pc-windows-msvc/release/bundle/* dist/windows/
 
                 cd dist/windows
                 zip -r ../final/ExifFlow-windows.zip .
@@ -170,7 +165,7 @@ pipeline {
 
     post {
         success {
-            archiveArtifacts artifacts: 'dist/final/**,dist/ExifFlow-windows.zip', fingerprint: true
+            archiveArtifacts artifacts: 'dist/final/**', fingerprint: true
         }
     }
 }
