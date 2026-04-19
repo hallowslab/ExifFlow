@@ -127,6 +127,8 @@ pipeline {
                     sh '''
                     set -e
 
+                    . "$HOME/.cargo/env"
+
                     cd app-gui
 
                     npm install
