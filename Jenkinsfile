@@ -13,7 +13,9 @@ pipeline {
         MAC_DIR = "target/mac"
 
         CERT_DIR = "certs"
-        EXIFTOOL_DIR = "/opt/code-deps/exiftool"
+
+        EXIFTOOL_VERSION = "13.55"
+        EXIFTOOL_DIR = "/opt/code-deps/exiftool/$EXIFTOOL_VERSION"
 
         DEP1_REPO = "https://github.com/hallowslab/rftps.git"
         DEP2_REPO = "https://github.com/hallowslab/timekeeper-rs.git"
