@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    parameters {
+        booleanParam(name: 'FORCE_ARTIFACTS', defaultValue: false, description: 'Force artifact build even if not a tag')
+    }
+
     environment {
         RUST_BACKTRACE = "1"
 
@@ -178,11 +182,17 @@ pipeline {
             }
         }
 
-    }
-
-    post {
-        success {
-            archiveArtifacts artifacts: 'dist/final/**', fingerprint: true
+        stage('Archive Artifacts') {
+            when {
+                anyOf {
+                    buildingTag()
+                    expression { return params.FORCE_ARTIFACTS == true }
+                }
+            }
+            steps {
+                archiveArtifacts artifacts: 'dist/final/**', fingerprint: true
+            }
         }
+
     }
 }
