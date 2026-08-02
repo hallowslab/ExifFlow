@@ -237,7 +237,7 @@ async fn register_relay_device(
         Ok(()) => {
             let token = client.authenticate().await.map_err(|e| e.to_string())?;
             client
-                .fetch_credentials(&token)
+                .fetch_backend_config(&token)
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(RegisterRelayResponse {
