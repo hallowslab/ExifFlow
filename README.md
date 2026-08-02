@@ -7,7 +7,7 @@ Rather than being a single binary, ExifFlow is a **workspace of interoperating c
 * **timekeeper-rs** → EXIF-based media organizer
 * **rftps** → FTP/FTPS server for file ingestion
 * **app-gui** → Tauri-based desktop interface
-
+* **relay** → Optional relay gateway for **rftps** replication feature
 ---
 
 ## Architecture Overview
@@ -29,6 +29,74 @@ Rather than being a single binary, ExifFlow is a **workspace of interoperating c
         ▼
      app-gui (Tauri frontend)
 ```
+
+---
+
+## Quick Start
+
+The quickest path to a working pipeline is:
+
+1. **Start the relay** (authorization gateway + dashboard)
+2. **Start rftps** (FTP/FTPS server + optional replication client), or use the GUI
+3. **Approve the device** in the relay dashboard
+4. **Upload a file**
+
+Each component has a dedicated setup section in its own README:
+
+| Component | README | Setup covers |
+| --------- | ------ | ------------ |
+| Relay (Python/FastAPI) | [`relay/README.md`](relay/README.md) | venv, `.env`, master key, serve, storage credentials |
+| rftps (Rust) | [`rftps/README.md`](rftps/README.md) | build features, FTP/FTPS, relay init, config |
+| app-gui (Tauri) | [`app-gui/README.md`](app-gui/README.md) | dev mode, build, FTP + relay settings |
+
+### End-to-end replication setup (3 components)
+
+**1. Relay — the authorization gateway**
+
+```bash
+cd relay
+cp .env.example .env
+uv run relay keygen                      # prints a Fernet master key
+# paste the key into .env as RELAY_MASTER_KEY, then:
+uv run relay serve
+```
+
+This starts the API on `0.0.0.0:8700` (client devices talk to it) and the
+admin dashboard on `127.0.0.1:8701`.
+
+Set the replication target storage (the FTP server files get pushed to) at
+<http://127.0.0.1:8701/dashboard/storage> or via CLI:
+
+```bash
+uv run relay storage set                 # prompts for ftp/ftps host/user/password/CA
+```
+
+**2. rftps — FTP/FTPS server + replication client**
+
+```bash
+cd rftps
+cargo run --release --features relay -- relay init     # interactive; writes bg.json
+cargo run --release --features relay -- --config bg.json --directory /path/to/upload-root
+```
+
+`relay init` generates a device key and writes `bg.json` with the relay URL,
+device name, timeout, optional CA cert, and verbosity. Re-run it (or edit
+`bg.json`) to change settings.
+
+**3. Approve the device**
+
+Open <http://127.0.0.1:8701/dashboard>, find the device, and click
+**Approve**. Now upload any file to the FTP server — it is replicated to the
+storage if configured in step 1.
+
+> **Self-signed FTPS target?** Generate a cert with
+> `cargo run --example gen_cert -- outdir 192.168.1.50` and paste the
+> `cert.pem` contents into the relay storage **CA cert** field. Verification is
+> never skipped — the CA just becomes a trusted root.
+
+> **Only want the GUI?** See [`app-gui/README.md`](app-gui/README.md): set the
+> Relay URL + device name in **Settings → Replication (Relay)**, click
+> **REGISTER DEVICE**, and approve it in the dashboard.
 
 ---
 
@@ -73,6 +141,19 @@ Desktop application providing a user interface over the pipeline, with a builtin
 * Vite
 
 **Path:** `./app-gui`
+
+---
+
+### 4. Relay (Replication Gateway)
+
+Authorization gateway for zero-trust device replication. Devices register,
+get approved on the dashboard, and receive encrypted FTP/FTPS storage
+credentials.
+
+**Tech stack:** Python, FastAPI, SQLite (aiosqlite), Jinja2/HTMX
+
+**Path:** `./relay`
+**Setup:** [`relay/README.md`](relay/README.md)
 
 ---
 
@@ -176,6 +257,7 @@ npm run tauri dev
 ├── app-gui/
 ├── timekeeper-rs/
 ├── rftps/
+├── relay/
 ├── docs/
 │   └── build.md
 ├── Cargo.toml
