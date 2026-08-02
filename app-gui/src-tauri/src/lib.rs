@@ -1,4 +1,4 @@
-use rftps::{config::Args as FtpArgs, FtpEvent, FtpServer};
+use rftps::{config::Args as FtpArgs, FtpServer};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tauri::{Emitter, State};
@@ -23,6 +23,10 @@ struct FtpConfig {
     username: String,
     password: Option<String>,
     enable_ftps: Option<bool>,
+    relay_url: Option<String>,
+    relay_device_name: Option<String>,
+    relay_device_key: Option<String>,
+    relay_messages: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -30,6 +34,14 @@ struct StartFtpResponse {
     message: String,
     password: Option<String>,
     address: String,
+    relay_device_key: Option<String>,
+}
+
+#[derive(Serialize)]
+struct RegisterRelayResponse {
+    status: String,
+    message: Option<String>,
+    device_key: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -71,10 +83,51 @@ async fn start_ftp_server(
         enable_ftps: config.enable_ftps,
         cert_pem: None,
         key_pem: None,
+        config: None,
     };
 
     let server = FtpServer::new(args).map_err(|e| e.to_string())?;
     let (_, _, actual_password) = server.config();
+
+    let bus = rftps::event::EventBus::new();
+
+    // Wire relay replication if configured
+    let mut generated_relay_key = None;
+    let mut server = server.with_event_bus(bus.clone());
+    if let Some(ref url) = config.relay_url {
+        let url = url.trim();
+        if url.is_empty() {
+            return Err("relay url is empty".into());
+        }
+        let device_key = match config.relay_device_key.clone() {
+            Some(k) if !k.trim().is_empty() => k.trim().to_string(),
+            _ => {
+                let k = rftps::background::relay::generate_device_key();
+                generated_relay_key = Some(k.clone());
+                k
+            }
+        };
+        let device_name = config
+            .relay_device_name
+            .clone()
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or_else(|| "exifflow".into());
+        let relay_cfg = rftps::background::RelayConfig {
+            url: url.into(),
+            device_key,
+            device_name,
+            approval_timeout_secs: 1800,
+            ca_cert: None,
+            danger_disable_cert_verify: false,
+            relay_messages: config.relay_messages.unwrap_or(true),
+        };
+        let bg_config = rftps::background::BackgroundJobConfig {
+            enabled: true,
+            relay: Some(relay_cfg),
+            ..Default::default()
+        };
+        server = server.with_background_config(bg_config);
+    }
 
     // Resolve local address for display
     let local_socket =
@@ -89,37 +142,49 @@ async fn start_ftp_server(
     let (tx, rx) = oneshot::channel();
     *stop_tx_lock = Some(tx);
 
-    let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel();
-    let server = server.with_event_tx(event_tx);
+    let (_, mut event_rx) = bus.subscribe();
 
     let window_handle = window.clone();
     tokio::spawn(async move {
         while let Some(event) = event_rx.recv().await {
-            let msg = match &event {
-                FtpEvent::LoggedIn { username } => format!("User {} logged in", username),
-                FtpEvent::LoggedOut { username } => format!("User {} logged out", username),
-                FtpEvent::FileUpload { username, path } => {
-                    format!("User {} uploaded file {}", username, path)
+            match &event {
+                rftps::event::FtpEvent::RelayStatus { status, message } => {
+                    let _ = window_handle.emit(
+                        "relay-status",
+                        serde_json::json!({ "status": status, "message": message }),
+                    );
                 }
-                FtpEvent::FileDownload { username, path } => {
-                    format!("User {} downloaded file {}", username, path)
+                other => {
+                    let msg = match other {
+                        rftps::event::FtpEvent::LoggedIn { username } => {
+                            format!("User {} logged in", username)
+                        }
+                        rftps::event::FtpEvent::LoggedOut { username } => {
+                            format!("User {} logged out", username)
+                        }
+                        rftps::event::FtpEvent::FileUploaded { username, path, .. } => {
+                            format!("User {} uploaded file {}", username, path)
+                        }
+                        rftps::event::FtpEvent::FileDownloaded { username, path } => {
+                            format!("User {} downloaded file {}", username, path)
+                        }
+                        rftps::event::FtpEvent::DirCreated { username, path } => {
+                            format!("User {} created directory {}", username, path)
+                        }
+                        rftps::event::FtpEvent::DirRemoved { username, path } => {
+                            format!("User {} removed directory {}", username, path)
+                        }
+                        rftps::event::FtpEvent::Renamed { username, from, to } => {
+                            format!("User {} renamed {} to {}", username, from, to)
+                        }
+                        rftps::event::FtpEvent::Deleted { username, path } => {
+                            format!("User {} deleted {}", username, path)
+                        }
+                        rftps::event::FtpEvent::RelayStatus { .. } => unreachable!(),
+                    };
+                    let _ = window_handle.emit("ftp-event", serde_json::json!({ "message": msg }));
                 }
-                FtpEvent::DirCreated { username, path } => {
-                    format!("User {} created directory {}", username, path)
-                }
-                FtpEvent::DirRemoved { username, path } => {
-                    format!("User {} removed directory {}", username, path)
-                }
-                FtpEvent::Renamed {
-                    username,
-                    from,
-                    to,
-                } => format!("User {} renamed {} to {}", username, from, to),
-                FtpEvent::Deleted { username, path } => {
-                    format!("User {} deleted {}", username, path)
-                }
-            };
-            let _ = window_handle.emit("ftp-event", serde_json::json!({ "message": msg }));
+            }
         }
     });
 
@@ -133,16 +198,76 @@ async fn start_ftp_server(
         message,
         password: generated_password,
         address: display_address,
+        relay_device_key: generated_relay_key,
     })
 }
 
 #[tauri::command]
-async fn get_server_info() -> Result<StartFtpResponse, String> {
-    let local_socket = rftps::resolve_local_ip().map_err(|e| e.to_string())?;
+async fn register_relay_device(
+    relay_url: String,
+    device_name: String,
+    device_key: Option<String>,
+) -> Result<RegisterRelayResponse, String> {
+    let url = relay_url.trim();
+    if url.is_empty() {
+        return Err("relay url is empty".into());
+    }
+    let key = match device_key {
+        Some(k) if !k.trim().is_empty() => k.trim().to_string(),
+        _ => rftps::background::relay::generate_device_key(),
+    };
+    let name = if device_name.trim().is_empty() {
+        "exifflow".to_string()
+    } else {
+        device_name.trim().to_string()
+    };
+    let config = rftps::background::RelayConfig {
+        url: url.into(),
+        device_key: key.clone(),
+        device_name: name,
+        approval_timeout_secs: 30,
+        ca_cert: None,
+        danger_disable_cert_verify: false,
+        relay_messages: true,
+    };
+    let client = rftps::background::relay::RelayClient::new(&config).map_err(|e| e.to_string())?;
+    client.register().await.map_err(|e| e.to_string())?;
+
+    match client.wait_for_approval().await {
+        Ok(()) => {
+            let token = client.authenticate().await.map_err(|e| e.to_string())?;
+            client
+                .fetch_credentials(&token)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(RegisterRelayResponse {
+                status: "active".into(),
+                message: Some("device approved, credentials armed".into()),
+                device_key: key,
+            })
+        }
+        Err(e) if matches!(e, rftps::background::relay::RelayError::PendingApproval) => {
+            Ok(RegisterRelayResponse {
+                status: "pending".into(),
+                message: Some("device registered — approve it in the relay dashboard".into()),
+                device_key: key,
+            })
+        }
+        Err(e) => Ok(RegisterRelayResponse {
+            status: "rejected".into(),
+            message: Some(e.to_string()),
+            device_key: key,
+        }),
+    }
+}
+
+#[tauri::command]
+async fn get_server_info() -> Result<StartFtpResponse, String> {    let local_socket = rftps::resolve_local_ip().map_err(|e| e.to_string())?;
     Ok(StartFtpResponse {
         message: "Server address resolved".into(),
         password: None,
         address: local_socket.ip().to_string(),
+        relay_device_key: None,
     })
 }
 
@@ -275,6 +400,7 @@ pub fn run() {
             start_ftp_server,
             stop_ftp_server,
             get_server_info,
+            register_relay_device,
             run_organization,
             stop_organization,
             run_backup
