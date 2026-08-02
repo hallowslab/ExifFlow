@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -21,7 +21,11 @@ const SETTINGS_STORAGE_KEY = 'exifflow.settings.v1';
 const DEFAULT_APP_SETTINGS = {
   ftp: {
     uploadPath: 'C:/ExifFlow/Uploads',
-    user: 'user'
+    user: 'user',
+    relayUrl: '',
+    relayDeviceName: '',
+    relayDeviceKey: '',
+    relayMessages: false
   },
   organize: {
     source: 'C:/ExifFlow/Uploads',
@@ -44,12 +48,15 @@ const DEFAULT_APP_SETTINGS = {
 function App() {
   const [activeTab, setActiveTab] = useState('ftp');
   const [ftpStatus, setFtpStatus] = useState('offline');
+  const [relayStatus, setRelayStatus] = useState('idle');
+  const [isRegistering, setIsRegistering] = useState(false);
   const [isOrganizing, setIsOrganizing] = useState(false);
   const [logs, setLogs] = useState([]);
   const [logLimit, setLogLimit] = useState(DEFAULT_APP_SETTINGS.system.logLimit);
   const [isPowerUser, setIsPowerUser] = useState(DEFAULT_APP_SETTINGS.system.powerUserMode);
   const [appSettings, setAppSettings] = useState(DEFAULT_APP_SETTINGS);
   const [progress, setProgress] = useState({ total: 0, processed: 0, errors: 0 });
+  const relayMessagesRef = useRef(DEFAULT_APP_SETTINGS.ftp.relayMessages);
 
   // FTP Config
   const [ftpConfig, setFtpConfig] = useState({
@@ -58,7 +65,10 @@ function App() {
     directory: DEFAULT_APP_SETTINGS.ftp.uploadPath,
     username: DEFAULT_APP_SETTINGS.ftp.user,
     password: '',
-    enable_ftps: true
+    enable_ftps: true,
+    relayUrl: DEFAULT_APP_SETTINGS.ftp.relayUrl,
+    relayDeviceName: DEFAULT_APP_SETTINGS.ftp.relayDeviceName,
+    relayDeviceKey: DEFAULT_APP_SETTINGS.ftp.relayDeviceKey
   });
   const [serverInfo, setServerInfo] = useState({ address: '', generatedPassword: '' });
 
@@ -81,7 +91,10 @@ function App() {
     setFtpConfig((prev) => ({
       ...prev,
       directory: settings.ftp.uploadPath,
-      username: settings.ftp.user
+      username: settings.ftp.user,
+      relayUrl: settings.ftp.relayUrl,
+      relayDeviceName: settings.ftp.relayDeviceName,
+      relayDeviceKey: settings.ftp.relayDeviceKey
     }));
     setOrgConfig((prev) => ({
       ...prev,
@@ -128,6 +141,15 @@ function App() {
       addLog(event.payload.message);
     });
 
+    // Listen for relay status events
+    const unlistenRelay = listen('relay-status', (event) => {
+      const { status, message } = event.payload;
+      setRelayStatus(status);
+      if (relayMessagesRef.current) {
+        addLog(`Relay: ${message || status}`);
+      }
+    });
+
     // Get initial server address
     invoke('get_server_info').then(res => {
       setServerInfo(prev => ({ ...prev, address: res.address }));
@@ -136,8 +158,13 @@ function App() {
     return () => {
       unlistenOrg.then((fn) => fn());
       unlistenFtp.then((fn) => fn());
+      unlistenRelay.then((fn) => fn());
     };
   }, []);
+
+  useEffect(() => {
+    relayMessagesRef.current = appSettings.ftp.relayMessages;
+  }, [appSettings.ftp.relayMessages]);
 
   const updateAppSettings = (section, field, value) => {
     setAppSettings((prev) => ({
@@ -175,12 +202,62 @@ function App() {
 
   const handleStartFtp = async () => {
     try {
-      const res = await invoke('start_ftp_server', { config: ftpConfig });
+      const res = await invoke('start_ftp_server', {
+        config: {
+          ...ftpConfig,
+          relay_url: ftpConfig.relayUrl,
+          relay_device_name: ftpConfig.relayDeviceName,
+          relay_device_key: ftpConfig.relayDeviceKey,
+          relay_messages: appSettings.ftp.relayMessages
+        }
+      });
       setFtpStatus('online');
       setServerInfo({ address: res.address, generatedPassword: res.password || '' });
+      if (res.relay_device_key) {
+        setFtpConfig((prev) => ({ ...prev, relayDeviceKey: res.relay_device_key }));
+        setAppSettings((prev) => ({
+          ...prev,
+          ftp: { ...prev.ftp, relayDeviceKey: res.relay_device_key }
+        }));
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
+          ...appSettings,
+          ftp: { ...appSettings.ftp, relayDeviceKey: res.relay_device_key }
+        }));
+        addLog(`Generated relay device key: ${res.relay_device_key.slice(0, 12)}...`);
+      }
       addLog(res.message);
     } catch (err) {
       addLog(`Error: ${err}`);
+    }
+  };
+
+  const handleRegisterRelay = async () => {
+    if (isRegistering) return;
+
+    setIsRegistering(true);
+    setRelayStatus('registering');
+    try {
+      const res = await invoke('register_relay_device', {
+        relayUrl: appSettings.ftp.relayUrl,
+        deviceName: appSettings.ftp.relayDeviceName,
+        deviceKey: appSettings.ftp.relayDeviceKey || null
+      });
+      if (res.device_key && res.device_key !== appSettings.ftp.relayDeviceKey) {
+        updateAppSettings('ftp', 'relayDeviceKey', res.device_key);
+        setFtpConfig((prev) => ({ ...prev, relayDeviceKey: res.device_key }));
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
+          ...appSettings,
+          ftp: { ...appSettings.ftp, relayDeviceKey: res.device_key }
+        }));
+        addLog(`Generated relay device key: ${res.device_key.slice(0, 12)}...`);
+      }
+      setRelayStatus(res.status);
+      addLog(`Relay: ${res.message || res.status}`);
+    } catch (err) {
+      setRelayStatus('error');
+      addLog(`Error: ${err}`);
+    } finally {
+      setIsRegistering(false);
     }
   };
 
@@ -255,21 +332,21 @@ function App() {
             </div>
 
             {isPowerUser && (
-              <div className="grid-2 animate-fade-in">
-                <div className="form-group">
-                  <label>Listen Address</label>
-                  <input value={ftpConfig.address} onChange={e => setFtpConfig({ ...ftpConfig, address: e.target.value })} />
-                </div>
-                <div className="form-group">
-                  <label>Port</label>
-                  <input type="number" value={ftpConfig.port} onChange={e => setFtpConfig({ ...ftpConfig, port: parseInt(e.target.value) })} />
-                </div>
+              <div className="form-group animate-fade-in">
+                <label>Listen Address</label>
+                <input value={ftpConfig.address} onChange={e => setFtpConfig({ ...ftpConfig, address: e.target.value })} />
               </div>
             )}
 
-            <div className="form-group">
-              <label>Storage Directory</label>
-              <input value={ftpConfig.directory} onChange={e => setFtpConfig({ ...ftpConfig, directory: e.target.value })} />
+            <div className="grid-2">
+              <div className="form-group">
+                <label>Port</label>
+                <input type="number" value={ftpConfig.port} onChange={e => setFtpConfig({ ...ftpConfig, port: parseInt(e.target.value) })} />
+              </div>
+              <div className="form-group">
+                <label>Storage Directory</label>
+                <input value={ftpConfig.directory} onChange={e => setFtpConfig({ ...ftpConfig, directory: e.target.value })} />
+              </div>
             </div>
 
             <div className="grid-2">
@@ -287,6 +364,14 @@ function App() {
               <div className="form-group animate-fade-in" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
                 <input type="checkbox" style={{ width: 'auto' }} checked={ftpConfig.enable_ftps} onChange={e => setFtpConfig({ ...ftpConfig, enable_ftps: e.target.checked })} />
                 <label style={{ marginBottom: 0 }}>Enable FTPS (SSL/TLS Encryption)</label>
+              </div>
+            )}
+
+            {relayStatus !== 'idle' && (
+              <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div className={`status-badge ${relayStatus === 'approved' || relayStatus === 'active' ? 'status-online' : relayStatus === 'rejected' || relayStatus === 'error' ? 'status-offline' : ''}`}>
+                  <Activity size={14} /> RELAY: {relayStatus.toUpperCase()}
+                </div>
               </div>
             )}
 
@@ -426,6 +511,78 @@ function App() {
                   onChange={(e) => updateAppSettings('ftp', 'user', e.target.value)}
                   placeholder="user"
                 />
+              </div>
+            </SettingsGroup>
+
+            <SettingsGroup title="Relay Settings">
+              <div className="form-group">
+                <label>Relay URL</label>
+                <input
+                  value={appSettings.ftp.relayUrl}
+                  onChange={(e) => updateAppSettings('ftp', 'relayUrl', e.target.value)}
+                  placeholder="e.g. http://127.0.0.1:8700"
+                />
+              </div>
+
+              <div className="grid-2">
+                <div className="form-group">
+                  <label>Device Name</label>
+                  <input
+                    value={appSettings.ftp.relayDeviceName}
+                    onChange={(e) => updateAppSettings('ftp', 'relayDeviceName', e.target.value)}
+                    placeholder="e.g. studio-pc"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Device Key (auto-generated if empty)</label>
+                  <input
+                    value={appSettings.ftp.relayDeviceKey}
+                    onChange={(e) => updateAppSettings('ftp', 'relayDeviceKey', e.target.value)}
+                    placeholder="hex seed from `rftps relay keygen`"
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: '4px' }}>
+                <button
+                  className={`btn btn-primary ${isRegistering ? 'btn-disabled' : ''}`}
+                  onClick={handleRegisterRelay}
+                  disabled={isRegistering}
+                >
+                  {isRegistering ? (
+                    <>
+                      <Activity className="animate-spin" size={18} /> REGISTERING...
+                    </>
+                  ) : (
+                    <>
+                      <Play size={18} /> REGISTER DEVICE
+                    </>
+                  )}
+                </button>
+                {relayStatus !== 'idle' && (
+                  <div className={`status-badge ${relayStatus === 'approved' || relayStatus === 'active' ? 'status-online' : relayStatus === 'rejected' || relayStatus === 'error' ? 'status-offline' : ''}`} style={{ marginTop: '10px' }}>
+                    <Activity size={14} /> RELAY: {relayStatus.toUpperCase()}
+                  </div>
+                )}
+              </div>
+
+              <p className="hint" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '12px' }}>
+                Registers the device at the relay and waits (up to 30s) for approval.
+              </p>
+
+              <div className="form-group" style={{ marginTop: '14px' }}>
+                <label>
+                  <input
+                    type="checkbox"
+                    style={{ width: 'auto' }}
+                    checked={appSettings.ftp.relayMessages}
+                    onChange={(e) => updateAppSettings('ftp', 'relayMessages', e.target.checked)}
+                  />
+                  <text style={{ marginLeft: '8px' }}>Print relay messages</text>
+                </label>
+                <p className="hint" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '6px' }}>
+                  Prints relay messages to the log console (less verbose output when off). Status badge always updates.
+                </p>
               </div>
             </SettingsGroup>
 
