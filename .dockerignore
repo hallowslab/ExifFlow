@@ -3,7 +3,7 @@
 **/target
 **/node_modules
 **/.venv
-relay/data
+access-broker/data
 deploy/secrets
 **/__pycache__
 **/*.pyc
