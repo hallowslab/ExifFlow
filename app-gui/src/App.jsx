@@ -22,10 +22,12 @@ const DEFAULT_APP_SETTINGS = {
   ftp: {
     uploadPath: 'C:/ExifFlow/Uploads',
     user: 'user',
-    relayUrl: '',
-    relayDeviceName: '',
-    relayDeviceKey: '',
-    relayMessages: false
+    brokerUrl: '',
+    brokerDeviceName: '',
+    brokerDeviceKey: '',
+    brokerMessages: false,
+    brokerCertPath: '',
+    immutableNaming: false
   },
   organize: {
     source: 'C:/ExifFlow/Uploads',
@@ -48,7 +50,7 @@ const DEFAULT_APP_SETTINGS = {
 function App() {
   const [activeTab, setActiveTab] = useState('ftp');
   const [ftpStatus, setFtpStatus] = useState('offline');
-  const [relayStatus, setRelayStatus] = useState('idle');
+  const [brokerStatus, setBrokerStatus] = useState('idle');
   const [isRegistering, setIsRegistering] = useState(false);
   const [isOrganizing, setIsOrganizing] = useState(false);
   const [logs, setLogs] = useState([]);
@@ -56,7 +58,7 @@ function App() {
   const [isPowerUser, setIsPowerUser] = useState(DEFAULT_APP_SETTINGS.system.powerUserMode);
   const [appSettings, setAppSettings] = useState(DEFAULT_APP_SETTINGS);
   const [progress, setProgress] = useState({ total: 0, processed: 0, errors: 0 });
-  const relayMessagesRef = useRef(DEFAULT_APP_SETTINGS.ftp.relayMessages);
+  const brokerMessagesRef = useRef(DEFAULT_APP_SETTINGS.ftp.brokerMessages);
 
   // FTP Config
   const [ftpConfig, setFtpConfig] = useState({
@@ -66,9 +68,11 @@ function App() {
     username: DEFAULT_APP_SETTINGS.ftp.user,
     password: '',
     enable_ftps: true,
-    relayUrl: DEFAULT_APP_SETTINGS.ftp.relayUrl,
-    relayDeviceName: DEFAULT_APP_SETTINGS.ftp.relayDeviceName,
-    relayDeviceKey: DEFAULT_APP_SETTINGS.ftp.relayDeviceKey
+    brokerUrl: DEFAULT_APP_SETTINGS.ftp.brokerUrl,
+    brokerDeviceName: DEFAULT_APP_SETTINGS.ftp.brokerDeviceName,
+    brokerDeviceKey: DEFAULT_APP_SETTINGS.ftp.brokerDeviceKey,
+    brokerCertPath: DEFAULT_APP_SETTINGS.ftp.brokerCertPath,
+    immutableNaming: DEFAULT_APP_SETTINGS.ftp.immutableNaming
   });
   const [serverInfo, setServerInfo] = useState({ address: '', generatedPassword: '' });
 
@@ -92,9 +96,11 @@ function App() {
       ...prev,
       directory: settings.ftp.uploadPath,
       username: settings.ftp.user,
-      relayUrl: settings.ftp.relayUrl,
-      relayDeviceName: settings.ftp.relayDeviceName,
-      relayDeviceKey: settings.ftp.relayDeviceKey
+      brokerUrl: settings.ftp.brokerUrl,
+      brokerDeviceName: settings.ftp.brokerDeviceName,
+      brokerDeviceKey: settings.ftp.brokerDeviceKey,
+      brokerCertPath: settings.ftp.brokerCertPath,
+      immutableNaming: settings.ftp.immutableNaming
     }));
     setOrgConfig((prev) => ({
       ...prev,
@@ -141,12 +147,23 @@ function App() {
       addLog(event.payload.message);
     });
 
-    // Listen for relay status events
-    const unlistenRelay = listen('relay-status', (event) => {
+    // Listen for broker status events
+    const unlistenBroker = listen('broker-status', (event) => {
       const { status, message } = event.payload;
-      setRelayStatus(status);
-      if (relayMessagesRef.current) {
-        addLog(`Relay: ${message || status}`);
+      setBrokerStatus(status);
+      if (brokerMessagesRef.current) {
+        addLog(`Broker: ${message || status}`);
+      }
+    });
+
+    // Listen for replication results (shown only when printing is on)
+    const unlistenReplication = listen('replication', (event) => {
+      if (!brokerMessagesRef.current) return;
+      const { path, ok, error } = event.payload;
+      if (ok) {
+        addLog(`Broker: replicated ${path}`);
+      } else {
+        addLog(`Broker: replication failed ${path}: ${error}`);
       }
     });
 
@@ -158,13 +175,14 @@ function App() {
     return () => {
       unlistenOrg.then((fn) => fn());
       unlistenFtp.then((fn) => fn());
-      unlistenRelay.then((fn) => fn());
+      unlistenBroker.then((fn) => fn());
+      unlistenReplication.then((fn) => fn());
     };
   }, []);
 
   useEffect(() => {
-    relayMessagesRef.current = appSettings.ftp.relayMessages;
-  }, [appSettings.ftp.relayMessages]);
+    brokerMessagesRef.current = appSettings.ftp.brokerMessages;
+  }, [appSettings.ftp.brokerMessages]);
 
   const updateAppSettings = (section, field, value) => {
     setAppSettings((prev) => ({
@@ -205,25 +223,27 @@ function App() {
       const res = await invoke('start_ftp_server', {
         config: {
           ...ftpConfig,
-          relay_url: ftpConfig.relayUrl,
-          relay_device_name: ftpConfig.relayDeviceName,
-          relay_device_key: ftpConfig.relayDeviceKey,
-          relay_messages: appSettings.ftp.relayMessages
+          broker_url: appSettings.ftp.brokerUrl,
+          broker_device_name: appSettings.ftp.brokerDeviceName,
+          broker_device_key: appSettings.ftp.brokerDeviceKey,
+          broker_messages: appSettings.ftp.brokerMessages,
+          broker_cert_path: appSettings.ftp.brokerCertPath || null,
+          immutable_naming: appSettings.ftp.immutableNaming
         }
       });
       setFtpStatus('online');
       setServerInfo({ address: res.address, generatedPassword: res.password || '' });
-      if (res.relay_device_key) {
-        setFtpConfig((prev) => ({ ...prev, relayDeviceKey: res.relay_device_key }));
+      if (res.broker_device_key) {
+        setFtpConfig((prev) => ({ ...prev, brokerDeviceKey: res.broker_device_key }));
         setAppSettings((prev) => ({
           ...prev,
-          ftp: { ...prev.ftp, relayDeviceKey: res.relay_device_key }
+          ftp: { ...prev.ftp, brokerDeviceKey: res.broker_device_key }
         }));
         localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
           ...appSettings,
-          ftp: { ...appSettings.ftp, relayDeviceKey: res.relay_device_key }
+          ftp: { ...appSettings.ftp, brokerDeviceKey: res.broker_device_key }
         }));
-        addLog(`Generated relay device key: ${res.relay_device_key.slice(0, 12)}...`);
+        addLog(`Generated broker device key: ${res.broker_device_key.slice(0, 12)}...`);
       }
       addLog(res.message);
     } catch (err) {
@@ -231,30 +251,32 @@ function App() {
     }
   };
 
-  const handleRegisterRelay = async () => {
+  const handleRegisterBroker = async () => {
     if (isRegistering) return;
 
     setIsRegistering(true);
-    setRelayStatus('registering');
+    setBrokerStatus('registering');
     try {
-      const res = await invoke('register_relay_device', {
-        relayUrl: appSettings.ftp.relayUrl,
-        deviceName: appSettings.ftp.relayDeviceName,
-        deviceKey: appSettings.ftp.relayDeviceKey || null
+      const res = await invoke('register_broker_device', {
+        brokerUrl: appSettings.ftp.brokerUrl,
+        deviceName: appSettings.ftp.brokerDeviceName,
+        deviceKey: appSettings.ftp.brokerDeviceKey || null,
+        brokerCertPath: appSettings.ftp.brokerCertPath || null,
+        immutableNaming: appSettings.ftp.immutableNaming
       });
-      if (res.device_key && res.device_key !== appSettings.ftp.relayDeviceKey) {
-        updateAppSettings('ftp', 'relayDeviceKey', res.device_key);
-        setFtpConfig((prev) => ({ ...prev, relayDeviceKey: res.device_key }));
+      if (res.device_key && res.device_key !== appSettings.ftp.brokerDeviceKey) {
+        updateAppSettings('ftp', 'brokerDeviceKey', res.device_key);
+        setFtpConfig((prev) => ({ ...prev, brokerDeviceKey: res.device_key }));
         localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
           ...appSettings,
-          ftp: { ...appSettings.ftp, relayDeviceKey: res.device_key }
+          ftp: { ...appSettings.ftp, brokerDeviceKey: res.device_key }
         }));
-        addLog(`Generated relay device key: ${res.device_key.slice(0, 12)}...`);
+        addLog(`Generated broker device key: ${res.device_key.slice(0, 12)}...`);
       }
-      setRelayStatus(res.status);
-      addLog(`Relay: ${res.message || res.status}`);
+      setBrokerStatus(res.status);
+      addLog(`Broker: ${res.message || res.status}`);
     } catch (err) {
-      setRelayStatus('error');
+      setBrokerStatus('error');
       addLog(`Error: ${err}`);
     } finally {
       setIsRegistering(false);
@@ -367,10 +389,10 @@ function App() {
               </div>
             )}
 
-            {relayStatus !== 'idle' && (
+            {brokerStatus !== 'idle' && (
               <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div className={`status-badge ${relayStatus === 'approved' || relayStatus === 'active' ? 'status-online' : relayStatus === 'rejected' || relayStatus === 'error' ? 'status-offline' : ''}`}>
-                  <Activity size={14} /> RELAY: {relayStatus.toUpperCase()}
+                <div className={`status-badge ${brokerStatus === 'approved' || brokerStatus === 'active' ? 'status-online' : brokerStatus === 'rejected' || brokerStatus === 'error' ? 'status-offline' : ''}`}>
+                  <Activity size={14} /> BROKER: {brokerStatus.toUpperCase()}
                 </div>
               </div>
             )}
@@ -514,12 +536,12 @@ function App() {
               </div>
             </SettingsGroup>
 
-            <SettingsGroup title="Relay Settings">
+            <SettingsGroup title="Broker Settings">
               <div className="form-group">
-                <label>Relay URL</label>
+                <label>Broker URL</label>
                 <input
-                  value={appSettings.ftp.relayUrl}
-                  onChange={(e) => updateAppSettings('ftp', 'relayUrl', e.target.value)}
+                  value={appSettings.ftp.brokerUrl}
+                  onChange={(e) => updateAppSettings('ftp', 'brokerUrl', e.target.value)}
                   placeholder="e.g. http://127.0.0.1:8700"
                 />
               </div>
@@ -528,25 +550,45 @@ function App() {
                 <div className="form-group">
                   <label>Device Name</label>
                   <input
-                    value={appSettings.ftp.relayDeviceName}
-                    onChange={(e) => updateAppSettings('ftp', 'relayDeviceName', e.target.value)}
+                    value={appSettings.ftp.brokerDeviceName}
+                    onChange={(e) => updateAppSettings('ftp', 'brokerDeviceName', e.target.value)}
                     placeholder="e.g. studio-pc"
                   />
                 </div>
                 <div className="form-group">
                   <label>Device Key (auto-generated if empty)</label>
                   <input
-                    value={appSettings.ftp.relayDeviceKey}
-                    onChange={(e) => updateAppSettings('ftp', 'relayDeviceKey', e.target.value)}
-                    placeholder="hex seed from `rftps relay keygen`"
+                    value={appSettings.ftp.brokerDeviceKey}
+                    onChange={(e) => updateAppSettings('ftp', 'brokerDeviceKey', e.target.value)}
+                    placeholder="hex seed from `rftps broker keygen`"
                   />
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label>Broker Certificate Path (optional - uses bundled cert if empty)</label>
+                <input
+                  value={appSettings.ftp.brokerCertPath}
+                  onChange={(e) => updateAppSettings('ftp', 'brokerCertPath', e.target.value)}
+                  placeholder="e.g. C:/ExifFlow/cert.pem"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={appSettings.ftp.immutableNaming}
+                    onChange={(e) => updateAppSettings('ftp', 'immutableNaming', e.target.checked)}
+                  />
+                  <span>Immutable naming (prepend UUID to filenames to prevent overwrites)</span>
+                </label>
               </div>
 
               <div style={{ marginTop: '4px' }}>
                 <button
                   className={`btn btn-primary ${isRegistering ? 'btn-disabled' : ''}`}
-                  onClick={handleRegisterRelay}
+                  onClick={handleRegisterBroker}
                   disabled={isRegistering}
                 >
                   {isRegistering ? (
@@ -559,15 +601,15 @@ function App() {
                     </>
                   )}
                 </button>
-                {relayStatus !== 'idle' && (
-                  <div className={`status-badge ${relayStatus === 'approved' || relayStatus === 'active' ? 'status-online' : relayStatus === 'rejected' || relayStatus === 'error' ? 'status-offline' : ''}`} style={{ marginTop: '10px' }}>
-                    <Activity size={14} /> RELAY: {relayStatus.toUpperCase()}
+                {brokerStatus !== 'idle' && (
+                  <div className={`status-badge ${brokerStatus === 'approved' || brokerStatus === 'active' ? 'status-online' : brokerStatus === 'rejected' || brokerStatus === 'error' ? 'status-offline' : ''}`} style={{ marginTop: '10px' }}>
+                    <Activity size={14} /> BROKER: {brokerStatus.toUpperCase()}
                   </div>
                 )}
               </div>
 
               <p className="hint" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '12px' }}>
-                Registers the device at the relay and waits (up to 30s) for approval.
+                Registers the device at the broker and waits (up to 30s) for approval.
               </p>
 
               <div className="form-group" style={{ marginTop: '14px' }}>
@@ -575,13 +617,13 @@ function App() {
                   <input
                     type="checkbox"
                     style={{ width: 'auto' }}
-                    checked={appSettings.ftp.relayMessages}
-                    onChange={(e) => updateAppSettings('ftp', 'relayMessages', e.target.checked)}
+                    checked={appSettings.ftp.brokerMessages}
+                    onChange={(e) => updateAppSettings('ftp', 'brokerMessages', e.target.checked)}
                   />
-                  <text style={{ marginLeft: '8px' }}>Print relay messages</text>
+                  <text style={{ marginLeft: '8px' }}>Print broker messages</text>
                 </label>
                 <p className="hint" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '6px' }}>
-                  Prints relay messages to the log console (less verbose output when off). Status badge always updates.
+                  Prints broker status and per-file replication results (success or failure) to the log console. Off = no broker messages.
                 </p>
               </div>
             </SettingsGroup>

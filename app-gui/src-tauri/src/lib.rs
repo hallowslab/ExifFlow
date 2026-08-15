@@ -23,10 +23,29 @@ struct FtpConfig {
     username: String,
     password: Option<String>,
     enable_ftps: Option<bool>,
-    relay_url: Option<String>,
-    relay_device_name: Option<String>,
-    relay_device_key: Option<String>,
-    relay_messages: Option<bool>,
+    broker_url: Option<String>,
+    broker_device_name: Option<String>,
+    broker_device_key: Option<String>,
+    broker_messages: Option<bool>,
+    broker_cert_path: Option<String>,
+    immutable_naming: Option<bool>,
+}
+
+fn load_broker_ca_cert(custom_path: Option<&str>) -> Option<String> {
+    let cert_path = if let Some(path) = custom_path {
+        std::path::PathBuf::from(path)
+    } else {
+        let mut path = dirs::data_dir()?;
+        path.push("ExifFlow");
+        path.push("cert.pem");
+        path
+    };
+
+    if cert_path.exists() {
+        std::fs::read_to_string(&cert_path).ok()
+    } else {
+        None
+    }
 }
 
 #[derive(Serialize)]
@@ -34,11 +53,11 @@ struct StartFtpResponse {
     message: String,
     password: Option<String>,
     address: String,
-    relay_device_key: Option<String>,
+    broker_device_key: Option<String>,
 }
 
 #[derive(Serialize)]
-struct RegisterRelayResponse {
+struct RegisterBrokerResponse {
     status: String,
     message: Option<String>,
     device_key: String,
@@ -83,6 +102,8 @@ async fn start_ftp_server(
         enable_ftps: config.enable_ftps,
         cert_pem: None,
         key_pem: None,
+        passive_ports: None,
+        external_ip: None,
         config: None,
     };
 
@@ -91,39 +112,41 @@ async fn start_ftp_server(
 
     let bus = rftps::event::EventBus::new();
 
-    // Wire relay replication if configured
-    let mut generated_relay_key = None;
+    // Wire broker replication if configured
+    let mut generated_broker_key = None;
     let mut server = server.with_event_bus(bus.clone());
-    if let Some(ref url) = config.relay_url {
+    if let Some(ref url) = config.broker_url {
         let url = url.trim();
         if url.is_empty() {
-            return Err("relay url is empty".into());
+            return Err("broker url is empty".into());
         }
-        let device_key = match config.relay_device_key.clone() {
+        let device_key = match config.broker_device_key.clone() {
             Some(k) if !k.trim().is_empty() => k.trim().to_string(),
             _ => {
-                let k = rftps::background::relay::generate_device_key();
-                generated_relay_key = Some(k.clone());
+                let k = rftps::background::broker::generate_device_key();
+                generated_broker_key = Some(k.clone());
                 k
             }
         };
         let device_name = config
-            .relay_device_name
+            .broker_device_name
             .clone()
             .filter(|n| !n.trim().is_empty())
             .unwrap_or_else(|| "exifflow".into());
-        let relay_cfg = rftps::background::RelayConfig {
+        let broker_cfg = rftps::background::BrokerConfig {
             url: url.into(),
             device_key,
             device_name,
             approval_timeout_secs: 1800,
             ca_cert: None,
+            ca_cert_pem: load_broker_ca_cert(config.broker_cert_path.as_deref()),
             danger_disable_cert_verify: false,
-            relay_messages: config.relay_messages.unwrap_or(true),
+            broker_messages: config.broker_messages.unwrap_or(true),
+            immutable_naming: config.immutable_naming.unwrap_or(false),
         };
         let bg_config = rftps::background::BackgroundJobConfig {
             enabled: true,
-            relay: Some(relay_cfg),
+            broker: Some(broker_cfg),
             ..Default::default()
         };
         server = server.with_background_config(bg_config);
@@ -148,10 +171,16 @@ async fn start_ftp_server(
     tokio::spawn(async move {
         while let Some(event) = event_rx.recv().await {
             match &event {
-                rftps::event::FtpEvent::RelayStatus { status, message } => {
+                rftps::event::FtpEvent::BrokerStatus { status, message } => {
                     let _ = window_handle.emit(
-                        "relay-status",
+                        "broker-status",
                         serde_json::json!({ "status": status, "message": message }),
+                    );
+                }
+                rftps::event::FtpEvent::Replication { path, ok, error } => {
+                    let _ = window_handle.emit(
+                        "replication",
+                        serde_json::json!({ "path": path, "ok": ok, "error": error }),
                     );
                 }
                 other => {
@@ -180,7 +209,8 @@ async fn start_ftp_server(
                         rftps::event::FtpEvent::Deleted { username, path } => {
                             format!("User {} deleted {}", username, path)
                         }
-                        rftps::event::FtpEvent::RelayStatus { .. } => unreachable!(),
+                        rftps::event::FtpEvent::BrokerStatus { .. } => unreachable!(),
+                        rftps::event::FtpEvent::Replication { .. } => unreachable!(),
                     };
                     let _ = window_handle.emit("ftp-event", serde_json::json!({ "message": msg }));
                 }
@@ -198,39 +228,43 @@ async fn start_ftp_server(
         message,
         password: generated_password,
         address: display_address,
-        relay_device_key: generated_relay_key,
+        broker_device_key: generated_broker_key,
     })
 }
 
 #[tauri::command]
-async fn register_relay_device(
-    relay_url: String,
+async fn register_broker_device(
+    broker_url: String,
     device_name: String,
     device_key: Option<String>,
-) -> Result<RegisterRelayResponse, String> {
-    let url = relay_url.trim();
+    broker_cert_path: Option<String>,
+    immutable_naming: Option<bool>,
+) -> Result<RegisterBrokerResponse, String> {
+    let url = broker_url.trim();
     if url.is_empty() {
-        return Err("relay url is empty".into());
+        return Err("broker url is empty".into());
     }
     let key = match device_key {
         Some(k) if !k.trim().is_empty() => k.trim().to_string(),
-        _ => rftps::background::relay::generate_device_key(),
+        _ => rftps::background::broker::generate_device_key(),
     };
     let name = if device_name.trim().is_empty() {
         "exifflow".to_string()
     } else {
         device_name.trim().to_string()
     };
-    let config = rftps::background::RelayConfig {
+    let config = rftps::background::BrokerConfig {
         url: url.into(),
         device_key: key.clone(),
         device_name: name,
         approval_timeout_secs: 30,
         ca_cert: None,
+        ca_cert_pem: load_broker_ca_cert(broker_cert_path.as_deref()),
         danger_disable_cert_verify: false,
-        relay_messages: true,
+        broker_messages: true,
+        immutable_naming: immutable_naming.unwrap_or(false),
     };
-    let client = rftps::background::relay::RelayClient::new(&config).map_err(|e| e.to_string())?;
+    let client = rftps::background::broker::BrokerClient::new(&config).map_err(|e| e.to_string())?;
     client.register().await.map_err(|e| e.to_string())?;
 
     match client.wait_for_approval().await {
@@ -240,20 +274,20 @@ async fn register_relay_device(
                 .fetch_backend_config(&token)
                 .await
                 .map_err(|e| e.to_string())?;
-            Ok(RegisterRelayResponse {
+            Ok(RegisterBrokerResponse {
                 status: "active".into(),
                 message: Some("device approved, credentials armed".into()),
                 device_key: key,
             })
         }
-        Err(e) if matches!(e, rftps::background::relay::RelayError::PendingApproval) => {
-            Ok(RegisterRelayResponse {
+        Err(e) if matches!(e, rftps::background::broker::BrokerError::PendingApproval) => {
+            Ok(RegisterBrokerResponse {
                 status: "pending".into(),
-                message: Some("device registered — approve it in the relay dashboard".into()),
+                message: Some("device registered — approve it in the broker dashboard".into()),
                 device_key: key,
             })
         }
-        Err(e) => Ok(RegisterRelayResponse {
+        Err(e) => Ok(RegisterBrokerResponse {
             status: "rejected".into(),
             message: Some(e.to_string()),
             device_key: key,
@@ -267,7 +301,7 @@ async fn get_server_info() -> Result<StartFtpResponse, String> {    let local_so
         message: "Server address resolved".into(),
         password: None,
         address: local_socket.ip().to_string(),
-        relay_device_key: None,
+        broker_device_key: None,
     })
 }
 
@@ -396,11 +430,40 @@ pub fn run() {
             organizer_running: Mutex::new(false),
             organizer_terminate: Mutex::new(None),
         })
+        .setup(|app| {
+            let app_data_dir = dirs::data_dir()
+                .map(|d| d.join("ExifFlow"))
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            
+            if let Err(e) = std::fs::create_dir_all(&app_data_dir) {
+                eprintln!("Failed to create app data directory: {}", e);
+                return Ok(());
+            }
+
+            let cert_dest = app_data_dir.join("cert.pem");
+            let key_dest = app_data_dir.join("key.pem");
+
+            if !cert_dest.exists() {
+                let cert_content = include_str!("../../certs/cert.pem");
+                if let Err(e) = std::fs::write(&cert_dest, cert_content) {
+                    eprintln!("Failed to write cert.pem: {}", e);
+                }
+            }
+
+            if !key_dest.exists() {
+                let key_content = include_str!("../../certs/key.pem");
+                if let Err(e) = std::fs::write(&key_dest, key_content) {
+                    eprintln!("Failed to write key.pem: {}", e);
+                }
+            }
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             start_ftp_server,
             stop_ftp_server,
             get_server_info,
-            register_relay_device,
+            register_broker_device,
             run_organization,
             stop_organization,
             run_backup

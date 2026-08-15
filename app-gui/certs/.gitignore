@@ -1,0 +1,6 @@
+# Real certs — never commit. Templates live in cert.pem.example / key.pem.example.
+# Before building, place real certs here, e.g.:
+#   Copy-Item rftps\gencert\cert.pem app-gui\certs\cert.pem
+#   Copy-Item rftps\gencert\key.pem  app-gui\certs\key.pem
+cert.pem
+key.pem
