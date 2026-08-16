@@ -28,3 +28,6 @@ timekeeper-rs/
 access-broker/
 deploy/
 docs/notes/
+
+# rust-doctor
+.rust-doctor-cache.json

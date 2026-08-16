@@ -3,6 +3,7 @@ pipeline {
 
     parameters {
         booleanParam(name: 'FORCE_ARTIFACTS', defaultValue: false, description: 'Force artifact build even if not a tag')
+        string(name: 'EXIFTOOL_VERSION', defaultValue: '13.59', description: 'Version of exiftool to use')
     }
 
     environment {
@@ -21,11 +22,12 @@ pipeline {
 
         CERT_DIR = "certs"
 
-        EXIFTOOL_VERSION = "13.55"
-        EXIFTOOL_DIR = "/opt/code-deps/exiftool/$EXIFTOOL_VERSION"
+        EXIFTOOL_DIR = "/opt/code-deps/exiftool/${params.EXIFTOOL_VERSION}"
 
         DEP1_REPO = "https://github.com/hallowslab/rftps.git"
+        DEP1_TAG = "v0.6.1"
         DEP2_REPO = "https://github.com/hallowslab/timekeeper-rs.git"
+        DEP2_TAG = "v0.3.1"
     }
 
     stages {
@@ -45,8 +47,8 @@ pipeline {
 
                 # Pin component versions: update these tags deliberately when
                 # bumping rftps / timekeeper-rs.
-                git clone --branch v0.6.0 "$DEP1_REPO" rftps
-                git clone --branch v0.3.0 "$DEP2_REPO" timekeeper-rs
+                git clone --branch $DEP1_TAG "$DEP1_REPO" rftps
+                git clone --branch $DEP2_TAG "$DEP2_REPO" timekeeper-rs
 
                 mkdir -p certs
                 '''
