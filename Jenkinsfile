@@ -43,8 +43,10 @@ pipeline {
 
                 rm -rf dist target rftps timekeeper-rs
 
-                git clone "$DEP1_REPO" rftps
-                git clone "$DEP2_REPO" timekeeper-rs
+                # Pin component versions: update these tags deliberately when
+                # bumping rftps / timekeeper-rs.
+                git clone --branch v0.6.0 "$DEP1_REPO" rftps
+                git clone --branch v0.3.0 "$DEP2_REPO" timekeeper-rs
 
                 mkdir -p certs
                 '''
@@ -99,6 +101,10 @@ pipeline {
 
                     export CARGO_TARGET_DIR="$LINUX_DIR"
 
+                    # Clear stale installers from previous builds (Tauri appends
+                    # versioned bundles without cleaning).
+                    rm -rf app-gui/src-tauri/target/linux/release/bundle
+
                     cd app-gui
                     npm ci
                     npm run build
@@ -139,6 +145,8 @@ pipeline {
                     . "$HOME/.cargo/env"
 
                     export CARGO_TARGET_DIR="$LINUX_PLAIN_DIR"
+
+                    rm -rf app-gui/src-tauri/target/linux-plain/release/bundle
 
                     cd app-gui
                     npm ci
@@ -195,6 +203,8 @@ pipeline {
 
                     export CARGO_TARGET_DIR="$WINDOWS_DIR"
 
+                    rm -rf app-gui/src-tauri/target/windows/release/bundle
+
                     cd app-gui
                     npm ci
                     npm run build
@@ -237,6 +247,8 @@ pipeline {
                     . "$HOME/.cargo/env"
 
                     export CARGO_TARGET_DIR="$WINDOWS_PLAIN_DIR"
+
+                    rm -rf app-gui/src-tauri/target/windows-plain/release/bundle
 
                     cd app-gui
                     npm ci
