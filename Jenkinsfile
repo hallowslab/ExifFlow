@@ -70,6 +70,7 @@ pipeline {
             steps {
                 sh '''
                 set -e
+                . "$HOME/.cargo/env"
 
                 mkdir -p certs
 
