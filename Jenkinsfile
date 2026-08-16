@@ -145,7 +145,7 @@ pipeline {
                     npm run build
                     cd ..
 
-                    cargo tauri build --target $LINUX_TARGET --no-default-features --features bundled
+                    cargo tauri build --target $LINUX_TARGET -- --no-default-features --features bundled
                     '''
                 }
             }
@@ -243,7 +243,7 @@ pipeline {
                     npm run build
                     cd ..
 
-                    cargo tauri build --target $WINDOWS_TARGET --runner cargo-xwin --no-default-features --features bundled
+                    cargo tauri build --target $WINDOWS_TARGET --runner cargo-xwin -- --no-default-features --features bundled
                     '''
                 }
             }
