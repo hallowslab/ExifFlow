@@ -23,14 +23,21 @@ struct FtpConfig {
     username: String,
     password: Option<String>,
     enable_ftps: Option<bool>,
+    #[cfg(feature = "replication")]
     broker_url: Option<String>,
+    #[cfg(feature = "replication")]
     broker_device_name: Option<String>,
+    #[cfg(feature = "replication")]
     broker_device_key: Option<String>,
+    #[cfg(feature = "replication")]
     broker_messages: Option<bool>,
+    #[cfg(feature = "replication")]
     broker_cert_path: Option<String>,
+    #[cfg(feature = "replication")]
     immutable_naming: Option<bool>,
 }
 
+#[cfg(feature = "replication")]
 fn load_broker_ca_cert(custom_path: Option<&str>) -> Option<String> {
     let cert_path = if let Some(path) = custom_path {
         std::path::PathBuf::from(path)
@@ -54,8 +61,10 @@ struct StartFtpResponse {
     password: Option<String>,
     address: String,
     broker_device_key: Option<String>,
+    broker_supported: bool,
 }
 
+#[cfg(feature = "replication")]
 #[derive(Serialize)]
 struct RegisterBrokerResponse {
     status: String,
@@ -75,6 +84,7 @@ struct OrganizeConfig {
 // Commands
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
+#[cfg_attr(not(feature = "replication"), allow(unused_variables))]
 async fn start_ftp_server(
     window: tauri::Window,
     state: State<'_, AppState>,
@@ -110,11 +120,15 @@ async fn start_ftp_server(
     let server = FtpServer::new(args).map_err(|e| e.to_string())?;
     let (_, _, actual_password) = server.config();
 
+    #[cfg(feature = "replication")]
     let bus = rftps::event::EventBus::new();
 
     // Wire broker replication if configured
+    #[cfg(feature = "replication")]
     let mut generated_broker_key = None;
+    #[cfg(feature = "replication")]
     let mut server = server.with_event_bus(bus.clone());
+    #[cfg(feature = "replication")]
     if let Some(ref url) = config.broker_url {
         let url = url.trim();
         if url.is_empty() {
@@ -165,58 +179,62 @@ async fn start_ftp_server(
     let (tx, rx) = oneshot::channel();
     *stop_tx_lock = Some(tx);
 
-    let (_, mut event_rx) = bus.subscribe();
+    #[cfg(feature = "replication")]
+    {
+        let (_, mut event_rx) = bus.subscribe();
 
-    let window_handle = window.clone();
-    tokio::spawn(async move {
-        while let Some(event) = event_rx.recv().await {
-            match &event {
-                rftps::event::FtpEvent::BrokerStatus { status, message } => {
-                    let _ = window_handle.emit(
-                        "broker-status",
-                        serde_json::json!({ "status": status, "message": message }),
-                    );
-                }
-                rftps::event::FtpEvent::Replication { path, ok, error } => {
-                    let _ = window_handle.emit(
-                        "replication",
-                        serde_json::json!({ "path": path, "ok": ok, "error": error }),
-                    );
-                }
-                other => {
-                    let msg = match other {
-                        rftps::event::FtpEvent::LoggedIn { username } => {
-                            format!("User {} logged in", username)
-                        }
-                        rftps::event::FtpEvent::LoggedOut { username } => {
-                            format!("User {} logged out", username)
-                        }
-                        rftps::event::FtpEvent::FileUploaded { username, path, .. } => {
-                            format!("User {} uploaded file {}", username, path)
-                        }
-                        rftps::event::FtpEvent::FileDownloaded { username, path } => {
-                            format!("User {} downloaded file {}", username, path)
-                        }
-                        rftps::event::FtpEvent::DirCreated { username, path } => {
-                            format!("User {} created directory {}", username, path)
-                        }
-                        rftps::event::FtpEvent::DirRemoved { username, path } => {
-                            format!("User {} removed directory {}", username, path)
-                        }
-                        rftps::event::FtpEvent::Renamed { username, from, to } => {
-                            format!("User {} renamed {} to {}", username, from, to)
-                        }
-                        rftps::event::FtpEvent::Deleted { username, path } => {
-                            format!("User {} deleted {}", username, path)
-                        }
-                        rftps::event::FtpEvent::BrokerStatus { .. } => unreachable!(),
-                        rftps::event::FtpEvent::Replication { .. } => unreachable!(),
-                    };
-                    let _ = window_handle.emit("ftp-event", serde_json::json!({ "message": msg }));
+        let window_handle = window.clone();
+        tokio::spawn(async move {
+            while let Some(event) = event_rx.recv().await {
+                match &event {
+                    rftps::event::FtpEvent::BrokerStatus { status, message } => {
+                        let _ = window_handle.emit(
+                            "broker-status",
+                            serde_json::json!({ "status": status, "message": message }),
+                        );
+                    }
+                    rftps::event::FtpEvent::Replication { path, ok, error } => {
+                        let _ = window_handle.emit(
+                            "replication",
+                            serde_json::json!({ "path": path, "ok": ok, "error": error }),
+                        );
+                    }
+                    other => {
+                        let msg = match other {
+                            rftps::event::FtpEvent::LoggedIn { username } => {
+                                format!("User {} logged in", username)
+                            }
+                            rftps::event::FtpEvent::LoggedOut { username } => {
+                                format!("User {} logged out", username)
+                            }
+                            rftps::event::FtpEvent::FileUploaded { username, path, .. } => {
+                                format!("User {} uploaded file {}", username, path)
+                            }
+                            rftps::event::FtpEvent::FileDownloaded { username, path } => {
+                                format!("User {} downloaded file {}", username, path)
+                            }
+                            rftps::event::FtpEvent::DirCreated { username, path } => {
+                                format!("User {} created directory {}", username, path)
+                            }
+                            rftps::event::FtpEvent::DirRemoved { username, path } => {
+                                format!("User {} removed directory {}", username, path)
+                            }
+                            rftps::event::FtpEvent::Renamed { username, from, to } => {
+                                format!("User {} renamed {} to {}", username, from, to)
+                            }
+                            rftps::event::FtpEvent::Deleted { username, path } => {
+                                format!("User {} deleted {}", username, path)
+                            }
+                            rftps::event::FtpEvent::BrokerStatus { .. } => unreachable!(),
+                            rftps::event::FtpEvent::Replication { .. } => unreachable!(),
+                        };
+                        let _ =
+                            window_handle.emit("ftp-event", serde_json::json!({ "message": msg }));
+                    }
                 }
             }
-        }
-    });
+        });
+    }
 
     tokio::spawn(async move {
         if let Err(e) = server.run(rx).await {
@@ -228,10 +246,15 @@ async fn start_ftp_server(
         message,
         password: generated_password,
         address: display_address,
+        #[cfg(feature = "replication")]
         broker_device_key: generated_broker_key,
+        #[cfg(not(feature = "replication"))]
+        broker_device_key: None,
+        broker_supported: cfg!(feature = "replication"),
     })
 }
 
+#[cfg(feature = "replication")]
 #[tauri::command]
 async fn register_broker_device(
     broker_url: String,
@@ -302,6 +325,7 @@ async fn get_server_info() -> Result<StartFtpResponse, String> {    let local_so
         password: None,
         address: local_socket.ip().to_string(),
         broker_device_key: None,
+        broker_supported: cfg!(feature = "replication"),
     })
 }
 
@@ -423,7 +447,7 @@ async fn run_backup(source: String, destination: String, dedupe: String) -> Resu
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             ftp_stop_tx: Mutex::new(None),
@@ -458,16 +482,29 @@ pub fn run() {
             }
 
             Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            start_ftp_server,
-            stop_ftp_server,
-            get_server_info,
-            register_broker_device,
-            run_organization,
-            stop_organization,
-            run_backup
-        ])
+        });
+
+    #[cfg(feature = "replication")]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        start_ftp_server,
+        stop_ftp_server,
+        get_server_info,
+        register_broker_device,
+        run_organization,
+        stop_organization,
+        run_backup
+    ]);
+    #[cfg(not(feature = "replication"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        start_ftp_server,
+        stop_ftp_server,
+        get_server_info,
+        run_organization,
+        stop_organization,
+        run_backup
+    ]);
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

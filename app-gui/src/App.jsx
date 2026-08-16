@@ -51,6 +51,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('ftp');
   const [ftpStatus, setFtpStatus] = useState('offline');
   const [brokerStatus, setBrokerStatus] = useState('idle');
+  const [brokerSupported, setBrokerSupported] = useState(true);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isOrganizing, setIsOrganizing] = useState(false);
   const [logs, setLogs] = useState([]);
@@ -167,9 +168,10 @@ function App() {
       }
     });
 
-    // Get initial server address
+    // Get initial server address + capability flags
     invoke('get_server_info').then(res => {
       setServerInfo(prev => ({ ...prev, address: res.address }));
+      setBrokerSupported(res.broker_supported !== false);
     }).catch(() => { });
 
     return () => {
@@ -389,7 +391,7 @@ function App() {
               </div>
             )}
 
-            {brokerStatus !== 'idle' && (
+            {brokerSupported && brokerStatus !== 'idle' && (
               <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div className={`status-badge ${brokerStatus === 'approved' || brokerStatus === 'active' ? 'status-online' : brokerStatus === 'rejected' || brokerStatus === 'error' ? 'status-offline' : ''}`}>
                   <Activity size={14} /> BROKER: {brokerStatus.toUpperCase()}
@@ -536,6 +538,7 @@ function App() {
               </div>
             </SettingsGroup>
 
+            {brokerSupported && (
             <SettingsGroup title="Broker Settings">
               <div className="form-group">
                 <label>Broker URL</label>
@@ -627,6 +630,7 @@ function App() {
                 </p>
               </div>
             </SettingsGroup>
+            )}
 
             <SettingsGroup title="Organizer Settings">
               <div className="form-group">
