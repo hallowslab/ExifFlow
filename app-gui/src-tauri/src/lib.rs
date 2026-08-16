@@ -132,8 +132,8 @@ async fn start_ftp_server(
     if let Some(ref url) = config.broker_url {
         let url = url.trim();
         if url.is_empty() {
-            return Err("broker url is empty".into());
-        }
+            // Broker URL empty -> no broker configured, run plain FTP server
+        } else {
         let device_key = match config.broker_device_key.clone() {
             Some(k) if !k.trim().is_empty() => k.trim().to_string(),
             _ => {
@@ -164,6 +164,7 @@ async fn start_ftp_server(
             ..Default::default()
         };
         server = server.with_background_config(bg_config);
+        }
     }
 
     // Resolve local address for display

@@ -225,7 +225,7 @@ function App() {
       const res = await invoke('start_ftp_server', {
         config: {
           ...ftpConfig,
-          broker_url: appSettings.ftp.brokerUrl,
+          broker_url: appSettings.ftp.brokerUrl || null,
           broker_device_name: appSettings.ftp.brokerDeviceName,
           broker_device_key: appSettings.ftp.brokerDeviceKey,
           broker_messages: appSettings.ftp.brokerMessages,
@@ -388,14 +388,6 @@ function App() {
               <div className="form-group animate-fade-in" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
                 <input type="checkbox" style={{ width: 'auto' }} checked={ftpConfig.enable_ftps} onChange={e => setFtpConfig({ ...ftpConfig, enable_ftps: e.target.checked })} />
                 <label style={{ marginBottom: 0 }}>Enable FTPS (SSL/TLS Encryption)</label>
-              </div>
-            )}
-
-            {brokerSupported && brokerStatus !== 'idle' && (
-              <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div className={`status-badge ${brokerStatus === 'approved' || brokerStatus === 'active' ? 'status-online' : brokerStatus === 'rejected' || brokerStatus === 'error' ? 'status-offline' : ''}`}>
-                  <Activity size={14} /> BROKER: {brokerStatus.toUpperCase()}
-                </div>
               </div>
             )}
 
