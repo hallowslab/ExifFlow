@@ -33,7 +33,8 @@ const DEFAULT_APP_SETTINGS = {
     source: 'C:/ExifFlow/Uploads',
     destination: 'C:/ExifFlow/Organized',
     method: 'copy',
-    locale: 'system'
+    locale: 'system',
+    fallback: 'unknown'
   },
   backup: {
     source: 'C:/ExifFlow/Organized',
@@ -84,7 +85,9 @@ function App() {
     destination: DEFAULT_APP_SETTINGS.organize.destination,
     dryRun: false,
     useCopy: DEFAULT_APP_SETTINGS.organize.method === 'copy', // Safe by default
-    locale: DEFAULT_APP_SETTINGS.organize.locale
+    locale: DEFAULT_APP_SETTINGS.organize.locale,
+    fallback: DEFAULT_APP_SETTINGS.organize.fallback,
+    fallbackOverride: false
   });
 
   // Backup Config
@@ -110,7 +113,8 @@ function App() {
       source: settings.organize.source,
       destination: settings.organize.destination,
       useCopy: settings.organize.method === 'copy',
-      locale: settings.organize.locale || 'system'
+      locale: settings.organize.locale || 'system',
+      fallback: settings.organize.fallback || 'unknown'
     }));
     setBackupConfig((prev) => ({
       ...prev,
@@ -312,7 +316,8 @@ function App() {
           destination: orgConfig.destination,
           dry_run: orgConfig.dryRun,
           use_copy: orgConfig.useCopy,
-          locale: orgConfig.locale || 'system'
+          locale: orgConfig.locale || 'system',
+          fallback: orgConfig.fallbackOverride ? orgConfig.fallback : (appSettings.organize.fallback || 'unknown')
         }
       });
       addLog(res);
@@ -446,6 +451,35 @@ function App() {
                   <label style={{ marginBottom: 0 }}>Dry Run (Preview)</label>
                 </div>
               )}
+            </div>
+
+            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input
+                type="checkbox"
+                style={{ width: 'auto' }}
+                checked={orgConfig.fallbackOverride}
+                onChange={e => setOrgConfig({ ...orgConfig, fallbackOverride: e.target.checked })}
+              />
+              <label style={{ marginBottom: 0 }}>Override default for files without EXIF data</label>
+            </div>
+            <div className="form-group">
+              <label>
+                Files Without EXIF Data
+                {!orgConfig.fallbackOverride && (
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                    {' '}(using settings default)
+                  </span>
+                )}
+              </label>
+              <select
+                value={orgConfig.fallbackOverride ? orgConfig.fallback : (appSettings.organize.fallback || 'unknown')}
+                disabled={!orgConfig.fallbackOverride}
+                onChange={e => setOrgConfig({ ...orgConfig, fallback: e.target.value })}
+              >
+                <option value="unknown">Sort into "unknown" folder</option>
+                <option value="modified">Use modified time</option>
+                <option value="created">Use creation time</option>
+              </select>
             </div>
 
             {progress.total > 0 && (
@@ -660,6 +694,23 @@ function App() {
                   <option value="copy">Copy (Safe/Default)</option>
                   <option value="move">Move (Destructive)</option>
                 </select>
+              </div>
+
+              <div className="form-group">
+                <label>Files Without EXIF Data (Default)</label>
+                <select
+                  value={appSettings.organize.fallback || 'unknown'}
+                  onChange={(e) =>
+                    updateAppSettings('organize', 'fallback', e.target.value)
+                  }
+                >
+                  <option value="unknown">Sort into "unknown" folder</option>
+                  <option value="modified">Use modified time</option>
+                  <option value="created">Use creation time</option>
+                </select>
+                <p className="hint" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '6px' }}>
+                  What to do when a file has no EXIF date. Can be overridden per-run on the Organizer page.
+                </p>
               </div>
 
               <div className="form-group">

@@ -80,6 +80,9 @@ struct OrganizeConfig {
     use_copy: bool,
     exiftool_path: Option<String>,
     locale: Option<String>,
+    /// What to do with files that have no EXIF date: "unknown" (default),
+    /// "modified", or "created".
+    fallback: Option<String>,
 }
 
 // Commands
@@ -371,6 +374,13 @@ async fn run_organization(
     let mut organizer = Organizer::new(source, destination, config.dry_run).with_copy(config.use_copy);
 
     organizer = organizer.with_locale(timekeeper::locale::resolve_locale(config.locale.as_deref()));
+
+    let fallback = config.fallback.as_deref().unwrap_or("unknown");
+    organizer = organizer.with_fallback(match fallback {
+        "modified" => timekeeper::metadata::FallbackStrategy::Modified,
+        "created" => timekeeper::metadata::FallbackStrategy::Created,
+        _ => timekeeper::metadata::FallbackStrategy::None,
+    });
 
     if let Some(p) = config.exiftool_path {
         organizer = organizer.with_exiftool(std::path::PathBuf::from(p));

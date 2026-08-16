@@ -27,7 +27,7 @@ pipeline {
         DEP1_REPO = "https://github.com/hallowslab/rftps.git"
         DEP1_TAG = "v0.6.1"
         DEP2_REPO = "https://github.com/hallowslab/timekeeper-rs.git"
-        DEP2_TAG = "v0.3.1"
+        DEP2_TAG = "v0.3.2"
     }
 
     stages {
