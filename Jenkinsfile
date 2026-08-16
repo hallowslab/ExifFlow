@@ -16,6 +16,9 @@ pipeline {
         WINDOWS_DIR = "target/windows"
         MAC_DIR = "target/mac"
 
+        LINUX_PLAIN_DIR = "target/linux-plain"
+        WINDOWS_PLAIN_DIR = "target/windows-plain"
+
         CERT_DIR = "certs"
 
         EXIFTOOL_VERSION = "13.55"
@@ -63,21 +66,23 @@ pipeline {
             }
         }
 
-        stage('Generate Certs (RFTPS only)') {
+        stage('Generate Certs (rftps + app-gui)') {
             steps {
                 sh '''
                 set -e
 
                 mkdir -p certs
 
-                openssl req -x509 -newkey rsa:2048 -nodes \
-                    -keyout certs/key.pem \
-                    -out certs/cert.pem \
-                    -days 365 \
-                    -subj "/CN=exifflow.internal"
+                # SAN-bearing certs for both the rftps FTPS server and the ExifFlow GUI
+                cd rftps
+                cargo run --example gen_cert -- ../certs 127.0.0.1 localhost
+                cd ..
 
                 cp certs/cert.pem rftps/cert.pem
                 cp certs/key.pem rftps/key.pem
+
+                cp certs/cert.pem app-gui/certs/cert.pem
+                cp certs/key.pem app-gui/certs/key.pem
                 '''
             }
         }
@@ -121,6 +126,47 @@ pipeline {
                 cp -r "$BUNDLE_DIR"/* dist/linux/
 
                 tar -czf dist/final/ExifFlow-linux.tar.gz -C dist/linux .
+                '''
+            }
+        }
+
+        stage('Build Linux Plain') {
+            steps {
+                nodejs('Node-24') {
+                    sh '''
+                    set -e
+                    . "$HOME/.cargo/env"
+
+                    export CARGO_TARGET_DIR="$LINUX_PLAIN_DIR"
+
+                    cd app-gui
+                    npm ci
+                    npm run build
+                    cd ..
+
+                    cargo tauri build --target $LINUX_TARGET --no-default-features --features bundled
+                    '''
+                }
+            }
+        }
+
+        stage('Package Linux Plain') {
+            steps {
+                sh '''
+                set -e
+
+                mkdir -p dist/linux-plain dist/final
+
+                BUNDLE_DIR=$(find app-gui/src-tauri/target/linux-plain -type d -path "*/release/bundle" | head -n 1)
+
+                if [ -z "$BUNDLE_DIR" ]; then
+                    echo "Linux plain bundle not found"
+                    exit 1
+                fi
+
+                cp -r "$BUNDLE_DIR"/* dist/linux-plain/
+
+                tar -czf dist/final/ExifFlow-plain-linux.tar.gz -C dist/linux-plain .
                 '''
             }
         }
@@ -177,6 +223,49 @@ pipeline {
 
                 cd dist/windows
                 zip -r ../final/ExifFlow-windows.zip .
+                cd ../../
+                '''
+            }
+        }
+
+        stage('Build Windows Plain') {
+            steps {
+                nodejs('Node-24') {
+                    sh '''
+                    set -e
+                    . "$HOME/.cargo/env"
+
+                    export CARGO_TARGET_DIR="$WINDOWS_PLAIN_DIR"
+
+                    cd app-gui
+                    npm ci
+                    npm run build
+                    cd ..
+
+                    cargo tauri build --target $WINDOWS_TARGET --runner cargo-xwin --no-default-features --features bundled
+                    '''
+                }
+            }
+        }
+
+        stage('Package Windows Plain') {
+            steps {
+                sh '''
+                set -e
+
+                mkdir -p dist/windows-plain dist/final
+
+                BUNDLE_DIR=$(find app-gui/src-tauri/target/windows-plain -type d -path "*/release/bundle" | head -n 1)
+
+                if [ -z "$BUNDLE_DIR" ]; then
+                    echo "Windows plain bundle not found"
+                    exit 1
+                fi
+
+                cp -r "$BUNDLE_DIR"/* dist/windows-plain/
+
+                cd dist/windows-plain
+                zip -r ../final/ExifFlow-plain-windows.zip .
                 cd ../../
                 '''
             }
