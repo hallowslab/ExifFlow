@@ -79,6 +79,7 @@ struct OrganizeConfig {
     dry_run: bool,
     use_copy: bool,
     exiftool_path: Option<String>,
+    locale: Option<String>,
 }
 
 // Commands
@@ -368,6 +369,8 @@ async fn run_organization(
     let source = std::path::PathBuf::from(config.source);
     let destination = std::path::PathBuf::from(config.destination);
     let mut organizer = Organizer::new(source, destination, config.dry_run).with_copy(config.use_copy);
+
+    organizer = organizer.with_locale(timekeeper::locale::resolve_locale(config.locale.as_deref()));
 
     if let Some(p) = config.exiftool_path {
         organizer = organizer.with_exiftool(std::path::PathBuf::from(p));

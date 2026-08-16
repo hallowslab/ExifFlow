@@ -32,7 +32,8 @@ const DEFAULT_APP_SETTINGS = {
   organize: {
     source: 'C:/ExifFlow/Uploads',
     destination: 'C:/ExifFlow/Organized',
-    method: 'copy'
+    method: 'copy',
+    locale: 'system'
   },
   backup: {
     source: 'C:/ExifFlow/Organized',
@@ -82,7 +83,8 @@ function App() {
     source: DEFAULT_APP_SETTINGS.organize.source,
     destination: DEFAULT_APP_SETTINGS.organize.destination,
     dryRun: false,
-    useCopy: DEFAULT_APP_SETTINGS.organize.method === 'copy' // Safe by default
+    useCopy: DEFAULT_APP_SETTINGS.organize.method === 'copy', // Safe by default
+    locale: DEFAULT_APP_SETTINGS.organize.locale
   });
 
   // Backup Config
@@ -107,7 +109,8 @@ function App() {
       ...prev,
       source: settings.organize.source,
       destination: settings.organize.destination,
-      useCopy: settings.organize.method === 'copy'
+      useCopy: settings.organize.method === 'copy',
+      locale: settings.organize.locale || 'system'
     }));
     setBackupConfig((prev) => ({
       ...prev,
@@ -308,7 +311,8 @@ function App() {
           source: orgConfig.source,
           destination: orgConfig.destination,
           dry_run: orgConfig.dryRun,
-          use_copy: orgConfig.useCopy
+          use_copy: orgConfig.useCopy,
+          locale: orgConfig.locale || 'system'
         }
       });
       addLog(res);
@@ -607,20 +611,22 @@ function App() {
                 Registers the device at the broker and waits (up to 30s) for approval.
               </p>
 
-              <div className="form-group" style={{ marginTop: '14px' }}>
-                <label>
-                  <input
-                    type="checkbox"
-                    style={{ width: 'auto' }}
-                    checked={appSettings.ftp.brokerMessages}
-                    onChange={(e) => updateAppSettings('ftp', 'brokerMessages', e.target.checked)}
-                  />
-                  <text style={{ marginLeft: '8px' }}>Print broker messages</text>
-                </label>
-                <p className="hint" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '6px' }}>
-                  Prints broker status and per-file replication results (success or failure) to the log console. Off = no broker messages.
-                </p>
-              </div>
+              { isPowerUser && (
+                  <div className="form-group" style={{ marginTop: '14px' }}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        style={{ width: 'auto' }}
+                        checked={appSettings.ftp.brokerMessages}
+                        onChange={(e) => updateAppSettings('ftp', 'brokerMessages', e.target.checked)}
+                      />
+                      <text style={{ marginLeft: '8px' }}>Print broker messages</text>
+                    </label>
+                    <p className="hint" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '6px' }}>
+                      Prints broker status and per-file replication results (success or failure) to the log console. Off = no broker messages.
+                    </p>
+                  </div>
+              )}
             </SettingsGroup>
             )}
 
@@ -654,6 +660,23 @@ function App() {
                   <option value="copy">Copy (Safe/Default)</option>
                   <option value="move">Move (Destructive)</option>
                 </select>
+              </div>
+
+              <div className="form-group">
+                <label>Month Language</label>
+                <select
+                  value={appSettings.organize.locale || 'system'}
+                  onChange={(e) =>
+                    updateAppSettings('organize', 'locale', e.target.value)
+                  }
+                >
+                  <option value="system">System</option>
+                  <option value="en">English</option>
+                  <option value="pt">Português</option>
+                </select>
+                <p className="hint" style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginTop: '6px' }}>
+                  Month names in the destination folders (e.g. 2025/07-July vs 2025/07-Julho). System follows the OS language.
+                </p>
               </div>
             </SettingsGroup>
 
