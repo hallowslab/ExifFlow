@@ -104,8 +104,9 @@ pipeline {
                     export CARGO_TARGET_DIR="$LINUX_DIR"
 
                     # Clear stale installers from previous builds (Tauri appends
-                    # versioned bundles without cleaning).
-                    rm -rf "$CARGO_TARGET_DIR"
+                    # versioned bundles without cleaning). Tauri resolves
+                    # CARGO_TARGET_DIR relative to src-tauri/.
+                    rm -rf "app-gui/src-tauri/$CARGO_TARGET_DIR/$LINUX_TARGET/release/bundle"
 
                     cd app-gui
                     npm ci
@@ -125,7 +126,7 @@ pipeline {
 
                 mkdir -p dist/linux dist/final
 
-                BUNDLE_DIR="$LINUX_DIR/$LINUX_TARGET/release/bundle"
+                BUNDLE_DIR="app-gui/src-tauri/$LINUX_DIR/$LINUX_TARGET/release/bundle"
 
                 if [ ! -d "$BUNDLE_DIR" ]; then
                     echo "Linux bundle not found: $BUNDLE_DIR"
@@ -148,7 +149,7 @@ pipeline {
 
                     export CARGO_TARGET_DIR="$LINUX_PLAIN_DIR"
 
-                    rm -rf "$CARGO_TARGET_DIR"
+                    rm -rf "app-gui/src-tauri/$CARGO_TARGET_DIR/$LINUX_TARGET/release/bundle"
 
                     cd app-gui
                     npm ci
@@ -168,7 +169,7 @@ pipeline {
 
                 mkdir -p dist/linux-plain dist/final
 
-                BUNDLE_DIR="$LINUX_PLAIN_DIR/$LINUX_TARGET/release/bundle"
+                BUNDLE_DIR="app-gui/src-tauri/$LINUX_PLAIN_DIR/$LINUX_TARGET/release/bundle"
 
                 if [ ! -d "$BUNDLE_DIR" ]; then
                     echo "Linux plain bundle not found: $BUNDLE_DIR"
@@ -205,7 +206,7 @@ pipeline {
 
                     export CARGO_TARGET_DIR="$WINDOWS_DIR"
 
-                    rm -rf "$CARGO_TARGET_DIR"
+                    rm -rf "app-gui/src-tauri/$CARGO_TARGET_DIR/$WINDOWS_TARGET/release/bundle"
 
                     cd app-gui
                     npm ci
@@ -225,7 +226,7 @@ pipeline {
 
                 mkdir -p dist/windows dist/final
 
-                BUNDLE_DIR="$WINDOWS_DIR/$WINDOWS_TARGET/release/bundle"
+                BUNDLE_DIR="app-gui/src-tauri/$WINDOWS_DIR/$WINDOWS_TARGET/release/bundle"
 
                 if [ ! -d "$BUNDLE_DIR" ]; then
                     echo "Windows bundle not found: $BUNDLE_DIR"
@@ -250,7 +251,7 @@ pipeline {
 
                     export CARGO_TARGET_DIR="$WINDOWS_PLAIN_DIR"
 
-                    rm -rf "$CARGO_TARGET_DIR"
+                    rm -rf "app-gui/src-tauri/$CARGO_TARGET_DIR/$WINDOWS_TARGET/release/bundle"
 
                     cd app-gui
                     npm ci
@@ -270,7 +271,7 @@ pipeline {
 
                 mkdir -p dist/windows-plain dist/final
 
-                BUNDLE_DIR="$WINDOWS_PLAIN_DIR/$WINDOWS_TARGET/release/bundle"
+                BUNDLE_DIR="app-gui/src-tauri/$WINDOWS_PLAIN_DIR/$WINDOWS_TARGET/release/bundle"
 
                 if [ ! -d "$BUNDLE_DIR" ]; then
                     echo "Windows plain bundle not found: $BUNDLE_DIR"
