@@ -60,7 +60,7 @@ function App() {
   const [logLimit, setLogLimit] = useState(DEFAULT_APP_SETTINGS.system.logLimit);
   const [isPowerUser, setIsPowerUser] = useState(DEFAULT_APP_SETTINGS.system.powerUserMode);
   const [appSettings, setAppSettings] = useState(DEFAULT_APP_SETTINGS);
-  const [progress, setProgress] = useState({ total: 0, processed: 0, errors: 0 });
+  const [progress, setProgress] = useState({ total: 0, processed: 0, errors: 0, done: false });
   const brokerMessagesRef = useRef(DEFAULT_APP_SETTINGS.ftp.brokerMessages);
 
   // FTP Config
@@ -147,7 +147,12 @@ function App() {
     // Listen for progress updates from backend
     const unlistenOrg = listen('org-progress', (event) => {
       setProgress(event.payload);
-      addLog(`Processed: ${event.payload.processed}/${event.payload.total} (Errors: ${event.payload.errors})`);
+      if (event.payload.done) {
+        const { total, exif, fallback, fallback_mode, skipped, errors, dry_run } = event.payload;
+        addLog(`${dry_run ? 'DRY RUN' : 'Organization'} summary: ${exif} by EXIF, ${fallback} fallback (${fallback_mode}), ${skipped} skipped, ${errors} errors of ${total}`);
+      } else {
+        addLog(`Processed: ${event.payload.processed}/${event.payload.total} (Errors: ${event.payload.errors})`);
+      }
     });
 
     // Listen for FTP events
@@ -306,7 +311,7 @@ function App() {
     if (isOrganizing) return;
 
     setIsOrganizing(true);
-    setProgress({ total: 0, processed: 0, errors: 0 });
+    setProgress({ total: 0, processed: 0, errors: 0, done: false });
 
     try {
       addLog("Starting file organization...");
@@ -487,6 +492,21 @@ function App() {
                 <label>Progress: {progress.processed} / {progress.total}</label>
                 <div style={{ height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden' }}>
                   <div style={{ height: '100%', background: 'var(--accent-cyan)', width: `${(progress.processed / progress.total) * 100}%`, transition: 'width 0.3s' }}></div>
+                </div>
+              </div>
+            )}
+
+            {progress.done && (
+              <div style={{ marginBottom: '20px', padding: '14px', background: 'rgba(0, 255, 255, 0.05)', borderRadius: '8px', border: '1px solid var(--accent-cyan)' }}>
+                <h4 style={{ margin: '0 0 10px 0', color: 'var(--accent-cyan)' }}>
+                  {progress.dry_run ? 'DRY RUN SUMMARY' : 'ORGANIZATION SUMMARY'}
+                </h4>
+                <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                  <div>Total files: <strong>{progress.total}</strong></div>
+                  <div>Organized by EXIF date: <strong>{progress.exif}</strong></div>
+                  <div>Fallback ({progress.fallback_mode}): <strong>{progress.fallback}</strong></div>
+                  <div>Skipped (already sorted): <strong>{progress.skipped}</strong></div>
+                  <div>Errors: <strong>{progress.errors}</strong></div>
                 </div>
               </div>
             )}

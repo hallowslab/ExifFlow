@@ -420,12 +420,31 @@ async fn run_organization(
     });
 
     // Run in a blocking task
-    let result = tokio::task::spawn_blocking(move || {
-        organizer
-            .run(stats, terminate_flag)
-            .map_err(|e| e.to_string())
+    let result = tokio::task::spawn_blocking({
+        let stats = Arc::clone(&stats);
+        move || {
+            organizer
+                .run(stats, terminate_flag)
+                .map_err(|e| e.to_string())
+        }
     })
     .await;
+
+    // Emit final summary with full stats (incl. dry-run previews)
+    let _ = window.emit(
+        "org-progress",
+        serde_json::json!({
+            "total": stats.total.load(std::sync::atomic::Ordering::SeqCst),
+            "processed": stats.processed.load(std::sync::atomic::Ordering::SeqCst),
+            "errors": stats.errors.load(std::sync::atomic::Ordering::SeqCst),
+            "exif": stats.exif_count.load(std::sync::atomic::Ordering::SeqCst),
+            "fallback": stats.fallback_count.load(std::sync::atomic::Ordering::SeqCst),
+            "skipped": stats.skipped.load(std::sync::atomic::Ordering::SeqCst),
+            "fallback_mode": fallback,
+            "dry_run": config.dry_run,
+            "done": true,
+        }),
+    );
 
     // Ensure flag is reset and monitor is stopped
     *state.organizer_running.lock().await = false;
