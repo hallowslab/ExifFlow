@@ -135,8 +135,8 @@ pipeline {
 
                 # Ship only the final package files; skip the bundler's
                 # intermediate unpacked deb/ and rpm/ directories.
-                find "$BUNDLE_DIR/deb" -maxdepth 1 -type f -name '*.deb' -exec cp {} dist/linux/deb/ +
-                find "$BUNDLE_DIR/rpm" -maxdepth 1 -type f -name '*.rpm' -exec cp {} dist/linux/rpm/ +
+                find "$BUNDLE_DIR/deb" -maxdepth 1 -type f -name '*.deb' -exec cp -t dist/linux/deb/ {} +
+                find "$BUNDLE_DIR/rpm" -maxdepth 1 -type f -name '*.rpm' -exec cp -t dist/linux/rpm/ {} +
 
                 tar -czf dist/final/ExifFlow-linux.tar.gz -C dist/linux .
                 '''
@@ -181,8 +181,8 @@ pipeline {
 
                 # Ship only the final package files; skip the bundler's
                 # intermediate unpacked deb/ and rpm/ directories.
-                find "$BUNDLE_DIR/deb" -maxdepth 1 -type f -name '*.deb' -exec cp {} dist/linux-plain/deb/ +
-                find "$BUNDLE_DIR/rpm" -maxdepth 1 -type f -name '*.rpm' -exec cp {} dist/linux-plain/rpm/ +
+                find "$BUNDLE_DIR/deb" -maxdepth 1 -type f -name '*.deb' -exec cp -t dist/linux-plain/deb/ {} +
+                find "$BUNDLE_DIR/rpm" -maxdepth 1 -type f -name '*.rpm' -exec cp -t dist/linux-plain/rpm/ {} +
 
                 tar -czf dist/final/ExifFlow-plain-linux.tar.gz -C dist/linux-plain .
                 '''
