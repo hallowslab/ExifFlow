@@ -124,7 +124,7 @@ pipeline {
                 sh '''
                 set -e
 
-                mkdir -p dist/linux dist/final
+                mkdir -p dist/linux/deb dist/linux/rpm dist/final
 
                 BUNDLE_DIR="app-gui/src-tauri/$LINUX_DIR/$LINUX_TARGET/release/bundle"
 
@@ -133,7 +133,12 @@ pipeline {
                     exit 1
                 fi
 
-                cp -r "$BUNDLE_DIR"/* dist/linux/
+                # Ship only the final package files; skip the bundler's
+                # intermediate unpacked deb/ and rpm/ directories.
+                find "$BUNDLE_DIR/deb" -maxdepth 1 -type f -name '*.deb' \
+                    -exec cp {} dist/linux/deb/ \;
+                find "$BUNDLE_DIR/rpm" -maxdepth 1 -type f -name '*.rpm' \
+                    -exec cp {} dist/linux/rpm/ \;
 
                 tar -czf dist/final/ExifFlow-linux.tar.gz -C dist/linux .
                 '''
@@ -167,7 +172,7 @@ pipeline {
                 sh '''
                 set -e
 
-                mkdir -p dist/linux-plain dist/final
+                mkdir -p dist/linux-plain/deb dist/linux-plain/rpm dist/final
 
                 BUNDLE_DIR="app-gui/src-tauri/$LINUX_PLAIN_DIR/$LINUX_TARGET/release/bundle"
 
@@ -176,7 +181,12 @@ pipeline {
                     exit 1
                 fi
 
-                cp -r "$BUNDLE_DIR"/* dist/linux-plain/
+                # Ship only the final package files; skip the bundler's
+                # intermediate unpacked deb/ and rpm/ directories.
+                find "$BUNDLE_DIR/deb" -maxdepth 1 -type f -name '*.deb' \
+                    -exec cp {} dist/linux-plain/deb/ \;
+                find "$BUNDLE_DIR/rpm" -maxdepth 1 -type f -name '*.rpm' \
+                    -exec cp {} dist/linux-plain/rpm/ \;
 
                 tar -czf dist/final/ExifFlow-plain-linux.tar.gz -C dist/linux-plain .
                 '''
